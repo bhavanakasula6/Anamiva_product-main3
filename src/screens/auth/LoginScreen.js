@@ -1,0 +1,250 @@
+/**
+ * Login Screen
+ * Phone number entry for authentication
+ */
+
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+import { useAuth } from '../../contexts/AuthContext';
+import { colors, typography, spacing } from '../../styles/theme';
+import { Button, Input } from '../../components/common';
+import { validatePhone } from '../../utils/validation';
+
+const LoginScreen = ({ navigation }) => {
+  const { sendOTP } = useAuth();
+
+  const [phone, setPhone] = useState('');
+  const [countryCode] = useState('+91');
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const handleSendOTP = async () => {
+    if (!validatePhone(phone)) {
+      setErrors({ phone: 'Enter a valid 10-digit phone number' });
+      return;
+    }
+
+    setErrors({});
+    setLoading(true);
+
+    try {
+      const fullPhone = `${countryCode}${phone}`;
+      const response = await sendOTP(fullPhone);
+
+      if (response?.success) {
+        navigation.navigate('OTPVerification', { phone: fullPhone });
+      } else {
+        Alert.alert('Error', response?.message || 'Failed to send OTP');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* CONTENT */}
+          <View style={styles.content}>
+            {/* Logo */}
+            <View style={styles.logoWrapper}>
+              <View style={styles.logoCircle}>
+                <Text style={styles.logoText}>M</Text>
+                {/* <Image
+                  source={require('../../assets/logo.png')}
+                  style={{ width: 56, height: 56, resizeMode: 'contain' }}
+                /> */}
+
+              </View>
+            </View>
+
+            {/* Title */}
+            <Text style={styles.title}>Welcome to MedApp</Text>
+            <Text style={styles.subtitle}>
+              Enter your phone number to continue
+            </Text>
+
+            {/* Form */}
+            <View style={styles.form}>
+              <Text style={styles.label}>Phone Number</Text>
+
+              <View style={styles.phoneRow}>
+                <View style={styles.countryCodeBox}>
+                  <Text style={styles.countryCode}>{countryCode}</Text>
+                </View>
+
+                <View style={styles.phoneInputContainer}>
+                  <Input
+                    value={phone}
+                    onChangeText={text => {
+                      setPhone(text);
+                      setErrors({});
+                    }}
+                    placeholder="10-digit mobile number"
+                    keyboardType="phone-pad"
+                    maxLength={10}
+                    error={errors.phone}
+                    style={styles.phoneInput}
+                  />
+                </View>
+              </View>
+
+              <Button
+                fullWidth
+                size="md"
+                loading={loading}
+                disabled={phone.length !== 10}
+                onPress={handleSendOTP}
+                style={styles.button}
+              >
+                Send OTP
+              </Button>
+
+              <Text style={styles.helperText}>
+                We’ll send a one-time password for verification
+              </Text>
+            </View>
+          </View>
+
+          {/* FOOTER */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              By continuing, you agree to our Terms & Privacy Policy
+            </Text>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+};
+
+/* ---------- STYLES ---------- */
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.white,
+  },
+
+  container: {
+    flex: 1,
+  },
+
+  scroll: {
+    flexGrow: 1,
+    justifyContent: 'space-between',
+  },
+
+  content: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing['3xl'],
+  },
+
+  logoWrapper: {
+    alignItems: 'center',
+    marginBottom: spacing.xl,
+  },
+
+  logoCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  logoText: {
+    fontSize: 42,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.primary[500],
+  },
+
+  title: {
+    fontSize: typography.fontSize['3xl'],
+    fontFamily: typography.fontFamily.bold,
+    color: colors.gray[900],
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+
+  subtitle: {
+    fontSize: typography.fontSize.base,
+    color: colors.gray[600],
+    textAlign: 'center',
+  },
+
+  form: {
+    marginTop: spacing['2xl'],
+  },
+
+  label: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.gray[700],
+    marginBottom: spacing.sm,
+  },
+
+  phoneRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+
+  countryCodeBox: {
+    paddingHorizontal: spacing.md,
+    height: 48,
+    borderRadius: 10,
+    backgroundColor: colors.gray[100],
+    justifyContent: 'center',
+  },
+  countryCode: {
+    fontSize: typography.fontSize.base,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.gray[900],
+  },
+  phoneInputContainer: {
+    flex: 1,
+  },
+  phoneInput: {
+    marginBottom: 0,
+  },
+  button: {
+    marginTop: spacing.xl,
+  },
+  helperText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.sm,
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+  footer: {
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
+  footerText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.gray[500],
+    textAlign: 'center',
+  },
+});
+
+export default LoginScreen;

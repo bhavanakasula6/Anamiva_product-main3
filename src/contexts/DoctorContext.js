@@ -1,0 +1,540 @@
+/**
+ * Doctor Context
+ * Manages doctor-specific data and operations
+ */
+
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import {
+  appointmentAPI,
+  emergencyAPI,
+  medicalRecordAPI,
+  medicationAPI,
+  analyticsAPI,
+  notificationAPI,
+  consentAPI,
+  accessRequestAPI,
+  patientAPI,
+} from '../services/api';
+import { useAuth } from './AuthContext';
+import { APPOINTMENT_STATUS, CONSENT_STATUS, CONSENT_TYPES, ACCESS_STATUS } from '../data/constants';
+
+const DoctorContext = createContext(null);
+
+export const DoctorProvider = ({ children }) => {
+  const { user, isDoctor } = useAuth();
+
+  // State
+  const [appointments, setAppointments] = useState([]);
+  const [emergencyRequests, setEmergencyRequests] = useState([]);
+  const [pendingRecords, setPendingRecords] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [analyticsFilter, setAnalyticsFilter] = useState({
+    period: 'month',
+    startDate: null,
+    endDate: null,
+  });
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [lastLocation, setLastLocation] = useState(null);
+
+  // Load doctor data on mount
+  useEffect(() => {
+    if (user && isDoctor()) {
+      loadDoctorData();
+    }
+  }, [user, isDoctor]);
+
+  const loadDoctorData = async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        loadAppointments(),
+        loadPendingRecords(),
+        loadNotifications(),
+        loadAnalytics(),
+      ]);
+    } catch (error) {
+      console.error('Error loading doctor data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ============================================
+  // Appointments
+  // ============================================
+
+  const loadAppointments = async (filters = {}) => {
+    try {
+      const response = await appointmentAPI.getAppointments(filters);
+      if (response.success) {
+        setAppointments(response.appointments);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error loading appointments:', error);
+      return { success: false, message: 'Failed to load appointments' };
+    }
+  };
+
+
+  const updateAppointmentStatus = async (appointmentId, status) => {
+    try {
+      const response = await appointmentAPI.updateAppointmentStatus(appointmentId, status);
+      if (response.success) {
+        setAppointments(prev =>
+          prev.map(apt => apt.id === appointmentId ? response.appointment : apt)
+        );
+      }
+      return response;
+    } catch (error) {
+      console.error('Error updating appointment status:', error);
+      return { success: false, message: 'Failed to update appointment status' };
+    }
+  };
+
+  const addClinicalNotes = async (appointmentId, notes, diagnosis) => {
+    try {
+      const response = await appointmentAPI.addClinicalNotes(appointmentId, notes, diagnosis);
+      if (response.success) {
+        setAppointments(prev =>
+          prev.map(apt => apt.id === appointmentId ? response.appointment : apt)
+        );
+      }
+      return response;
+    } catch (error) {
+      console.error('Error adding clinical notes:', error);
+      return { success: false, message: 'Failed to add clinical notes' };
+    }
+  };
+
+  const createPrescription = async (
+    appointmentId,
+    { medications, diagnosis, notes }
+  ) => {
+    try {
+      const appointment = appointments.find(a => a.id === appointmentId);
+
+      if (!appointment) {
+        return { success: false, message: 'Appointment not found' };
+      }
+
+      if (appointment.prescriptionId) {
+        return { success: false, error: 'PRESCRIPTION_ALREADY_EXISTS' };
+      }
+
+      if (appointment.status !== APPOINTMENT_STATUS.UPCOMING) {
+        return { success: false, error: 'INVALID_APPOINTMENT_STATE' };
+      }
+
+      const response = await appointmentAPI.createPrescription(
+        appointmentId,
+        { medications, diagnosis, notes }
+      );
+
+      if (response.success) {
+        await loadAppointments();
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Error creating prescription:', error);
+      return { success: false, message: 'Failed to create prescription' };
+    }
+  };
+
+  const updatePrescription = async (recordId, updates) => {
+    try {
+      const res = await medicalRecordAPI.updatePrescription(recordId, updates);
+      if (res.success) {
+        await loadAppointments();
+      }
+      return res;
+    } catch (error) {
+      console.error('Error updating prescription:', error);
+      return { success: false };
+    }
+  };
+
+  // ============================================
+  // Emergency
+  // ============================================
+
+  const loadNearbyEmergencies = async (latitude, longitude, radius = 5) => {
+    try {
+      const response = await emergencyAPI.getNearbyEmergencyRequests(latitude, longitude, radius);
+      if (response.success) {
+        setEmergencyRequests(response.requests);
+        setLastLocation({ lat: latitude, lng: longitude });
+      }
+      return response;
+    } catch (error) {
+      console.error('Error loading emergency requests:', error);
+      return { success: false, message: 'Failed to load emergency requests' };
+    }
+  };
+
+  const acceptEmergencyRequest = async (requestId) => {
+    try {
+      const response = await emergencyAPI.acceptEmergencyRequest(requestId);
+      if (response.success) {
+        setEmergencyRequests(prev =>
+          prev.filter(req => req.id !== requestId)
+        );
+      }
+      return response;
+    } catch (error) {
+      console.error('Error accepting emergency request:', error);
+      return { success: false, message: 'Failed to accept emergency request' };
+    }
+  };
+
+  const updateEmergencyStatus = async (requestId, status) => {
+    try {
+      const response = await emergencyAPI.updateEmergencyStatus(requestId, status);
+      if (lastLocation) {
+        await loadNearbyEmergencies(lastLocation.lat, lastLocation.lng);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error updating emergency status:', error);
+      return { success: false, message: 'Failed to update emergency status' };
+    }
+  };
+
+  const sendEmergencyMessage = async (requestId, message) => {
+    try {
+      const response = await emergencyAPI.sendChatMessage(requestId, message);
+      return response;
+    } catch (error) {
+      console.error('Error sending message:', error);
+      return { success: false, message: 'Failed to send message' };
+    }
+  };
+
+  const getEmergencyMessages = async (requestId) => {
+    try {
+      const response = await emergencyAPI.getChatMessages(requestId);
+      return response;
+    } catch (error) {
+      console.error('Error getting messages:', error);
+      return { success: false, message: 'Failed to get messages' };
+    }
+  };
+
+  // ============================================
+  // Medical Records & Verification
+  // ============================================
+
+  const loadPendingRecords = async () => {
+    try {
+      const response = await medicalRecordAPI.loadPendingRecords();
+      if (response.success) {
+        setPendingRecords(response.records);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error loading records for verification:', error);
+      return { success: false };
+    }
+  };
+
+  const verifyRecord = async (recordId) => {
+    try {
+      const res = await medicalRecordAPI.verifyRecord(recordId);
+      if (res.success) {
+        // remove from pending list immediately
+        setPendingRecords(prev =>
+          prev.filter(r => r.id !== recordId)
+        );
+      }
+      return res;
+    } catch (error) {
+      console.error('Verify record failed:', error);
+      return { success: false };
+    }
+  };
+
+  const rejectRecord = async (recordId, reason) => {
+    try {
+      const res = await medicalRecordAPI.rejectRecord(recordId, reason);
+      if (res.success) {
+        setPendingRecords(prev =>
+          prev.filter(r => r.id !== recordId)
+        );
+      }
+      return res;
+    } catch (error) {
+      console.error('Reject record failed:', error);
+      return { success: false };
+    }
+  };
+
+  const getPatientMedicalRecords = async (patientId) => {
+    try {
+      const response = await medicalRecordAPI.getMedicalRecords(patientId);
+      return response;
+    } catch (error) {
+      console.error('Error getting patient records:', error);
+      return { success: false, message: 'Failed to get patient records' };
+    }
+  };
+  const getAppointmentPrescription = async (appointmentId) => {
+    try {
+      return await medicalRecordAPI.getPrescriptionByAppointment(appointmentId);
+    } catch (e) {
+      console.error('Failed to load prescription', e);
+      return { success: false };
+    }
+  };
+
+  const getPatientMedications = async (patientId) => {
+    try {
+      return await medicationAPI.getActiveMedications(patientId);
+    } catch (error) {
+      console.error('Error getting patient medications:', error);
+      return { success: false, message: 'Failed to get patient medications' };
+    }
+  };
+
+  // ============================================
+  // Analytics
+  // ============================================
+
+  const loadAnalytics = async (filter = analyticsFilter) => {
+    try {
+      setAnalyticsFilter(filter);
+      const response = await analyticsAPI.getDoctorAnalytics(filter);
+      if (response.success) {
+        setAnalytics({
+          summary: response.summary,
+          chartData: response.chartData,
+          demographics: response.demographics,
+        });
+      }
+      return response;
+    } catch (error) {
+      console.error('Error loading analytics:', error);
+      return { success: false, message: 'Failed to load analytics' };
+    }
+  };
+
+  // ============================================
+  // Notifications
+  // ============================================
+
+  const loadNotifications = async () => {
+    try {
+      const response = await notificationAPI.getNotifications();
+      if (response.success) {
+        setNotifications(response.notifications);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error loading notifications:', error);
+      return { success: false, message: 'Failed to load notifications' };
+    }
+  };
+
+  const markNotificationAsRead = async (notificationId) => {
+    try {
+      const response = await notificationAPI.markAsRead(notificationId);
+      if (response.success) {
+        setNotifications(prev =>
+          prev.map(notif => notif.id === notificationId ? { ...notif, read: true } : notif)
+        );
+      }
+      return response;
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      return { success: false, message: 'Failed to mark as read' };
+    }
+  };
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const response = await notificationAPI.markAllAsRead();
+      if (response.success) {
+        setNotifications(prev => prev.map(notif => ({ ...notif, read: true })));
+      }
+      return response;
+    } catch (error) {
+      console.error('Error marking all as read:', error);
+      return { success: false, message: 'Failed to mark all as read' };
+    }
+  };
+
+  const getPatientAccessStatus = async ({ patientId, appointmentId }) => {
+    const res = await consentAPI.getAccessStatus({
+      patientId,
+      doctorId: user.id,
+      appointmentId,
+    });
+
+    if (!res.success) {
+      return { status: ACCESS_STATUS.NO_ACCESS, type: null };
+    }
+
+    return {
+      status: res.status,
+      type: res.type,
+    };
+  };
+
+
+  const requestAccess = async ({ patientId, appointmentId }) => {
+    const status = await getPatientAccessStatus({ patientId, appointmentId });
+
+    if (status.status === ACCESS_STATUS.PENDING) {
+      return { success: false, error: 'REQUEST_ALREADY_PENDING' };
+    }
+
+    if (status.status === ACCESS_STATUS.GRANTED) {
+      return { success: false, error: 'ACCESS_ALREADY_GRANTED' };
+    }
+
+    if (status.status === ACCESS_STATUS.DENIED) {
+      return { success: false, error: 'ACCESS_DENIED_BY_PATIENT' };
+    }
+
+    return accessRequestAPI.createRequest({
+      patientId,
+      doctorId: user.id,
+      appointmentId,
+    });
+  };
+
+  const cancelAccessRequest = async (requestId) => {
+    try {
+      return await accessRequestAPI.cancelRequest(requestId);
+    } catch (error) {
+      console.error('Error canceling access request:', error);
+      return { success: false };
+    }
+  };
+
+  const getAccessStatus = async ({ patientId, appointmentId = null }) => {
+    const res = await consentAPI.getAccessStatus({
+      patientId,
+      doctorId: user.id,
+      appointmentId,
+    });
+
+    return res.success
+      ? { status: res.status, type: res.type }
+      : { status: ACCESS_STATUS.NO_ACCESS, type: null };
+  };
+
+  const getPatientsWithAccess = async () => {
+    const map = new Map();
+
+    // 1️⃣ UPCOMING appointments
+    const aptRes = await appointmentAPI.getAppointments({
+      status: APPOINTMENT_STATUS.UPCOMING,
+    });
+
+    if (aptRes.success) {
+      for (const apt of aptRes.appointments) {
+        const access = await consentAPI.getAccessStatus({
+          patientId: apt.patientId,
+          doctorId: user.id,
+          appointmentId: apt.id,
+        });
+
+        let requestId = null;
+
+        if (access.status === ACCESS_STATUS.PENDING) {
+          requestId = access.requestId || null;
+        }
+
+        map.set(apt.patientId, {
+          id: apt.patientId,
+          name: apt.patient.name,
+          age: apt.patient.age,
+          gender: apt.patient.gender,
+          appointmentId: apt.id,
+          access,
+          requestId,
+        });
+      }
+    }
+
+    // 2️⃣ Extended-consent patients (no appointment)
+    const consentRes = await consentAPI.getConsents();
+
+    if (consentRes.success) {
+      const extended = consentRes.consents.filter(
+        c => c.type === CONSENT_TYPES.EXTENDED && c.status === CONSENT_STATUS.ACTIVE
+      );
+
+      for (const consent of extended) {
+        if (map.has(consent.patientId)) continue;
+
+        const patientRes = await patientAPI.getPatientById(consent.patientId);
+        if (!patientRes.success) continue;
+
+        map.set(consent.patientId, {
+          id: consent.patientId,
+          name: patientRes.patient.fullName,
+          age: patientRes.patient.age,
+          gender: patientRes.patient.gender,
+          appointmentId: null,
+          access: { status: ACCESS_STATUS.GRANTED, type: CONSENT_TYPES.EXTENDED },
+        });
+      }
+    }
+
+    return Array.from(map.values());
+  };
+
+
+  const value = {
+    appointments,
+    emergencyRequests,
+    pendingRecords,
+    notifications,
+    analytics,
+    analyticsFilter,
+    loading,
+    requestAccess,
+    cancelAccessRequest,
+    getPatientAccessStatus,
+    getAccessStatus,
+    getPatientsWithAccess,
+    loadAppointments,
+    updateAppointmentStatus,
+    addClinicalNotes,
+    createPrescription,
+    updatePrescription,
+    loadNearbyEmergencies,
+    acceptEmergencyRequest,
+    updateEmergencyStatus,
+    sendEmergencyMessage,
+    getEmergencyMessages,
+    loadPendingRecords,
+    verifyRecord,
+    rejectRecord,
+    getPatientMedicalRecords,
+    getAppointmentPrescription,
+    getPatientMedications,
+    setAnalyticsFilter,
+    loadAnalytics,
+    loadNotifications,
+    markNotificationAsRead,
+    markAllNotificationsAsRead,
+    refreshData: loadDoctorData,
+  };
+
+  return <DoctorContext.Provider value={value}>{children}</DoctorContext.Provider>;
+};
+
+// Custom hook to use doctor context
+export const useDoctor = () => {
+  const context = useContext(DoctorContext);
+  if (!context) {
+    throw new Error('useDoctor must be used within a DoctorProvider');
+  }
+  return context;
+};
+
+export default DoctorContext;
