@@ -33,7 +33,7 @@ import {
 import Icon from '../../components/Icon';
 
 const SettingsScreen = ({ navigation }) => {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
 
   const handleLogout = () => {
     Alert.alert(
@@ -99,13 +99,7 @@ const SettingsScreen = ({ navigation }) => {
           {/* ACCOUNT */}
           <Section title="Account">
             <Card style={styles.card}>
-              <SettingItem
-                icon="users"
-                title="Edit Profile"
-                subtitle="Update your personal information"
-                onPress={() => navigation.navigate('EditProfile')}
-              />
-              <Divider />
+
               <SettingItem
                 icon="bell"
                 title="Notifications"

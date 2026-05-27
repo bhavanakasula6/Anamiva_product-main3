@@ -40,7 +40,11 @@ const userSchema = new mongoose.Schema(
       state: String,
       pincode: String,
       country: String,
+      clinic: String,
     },
+
+    // Profile picture URL
+    profilePicture: String,
 
     // Location for nearby features
     location: {

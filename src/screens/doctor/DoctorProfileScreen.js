@@ -40,6 +40,14 @@ const DoctorProfileScreen = ({ navigation }) => {
           <Avatar source={{ uri: user?.avatar }} size={80} name={user?.fullName || user?.name} />
           <Text style={styles.userName}>{user?.fullName || user?.name || 'Doctor'}</Text>
           <Text style={styles.specialization}>{user?.specialization || 'General Physician'}</Text>
+          {(user?.address?.city || user?.address?.state) && (
+            <View style={styles.locationRow}>
+              <Icon name="map-pin" size={14} color={colors.gray[500]} />
+              <Text style={styles.locationText}>
+                {[user?.address?.city, user?.address?.state].filter(Boolean).join(', ')}
+              </Text>
+            </View>
+          )}
           <View style={styles.ratingRow}>
             <Icon name="star" size={16} color={colors.warning[500]} />
             <Text style={styles.rating}>{user?.rating || '0'}</Text>
@@ -68,6 +76,10 @@ const DoctorProfileScreen = ({ navigation }) => {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>Professional Information</Text>
           <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Clinic Name</Text>
+            <Text style={styles.infoValue}>{user?.address?.clinic || user?.clinicInfo?.name || '-'}</Text>
+          </View>
+          <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Qualifications</Text>
             <Text style={styles.infoValue}>{user?.qualifications || '-'}</Text>
           </View>
@@ -83,10 +95,23 @@ const DoctorProfileScreen = ({ navigation }) => {
             <Text style={styles.infoLabel}>Email</Text>
             <Text style={styles.infoValue}>{user?.email || '-'}</Text>
           </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>City</Text>
+            <Text style={styles.infoValue}>{user?.address?.city || '-'}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>State</Text>
+            <Text style={styles.infoValue}>{user?.address?.state || '-'}</Text>
+          </View>
         </Card>
 
         {/* Menu */}
         <Card style={styles.section}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('DoctorEditProfile')}>
+            <Icon name="edit" size={18} color={colors.gray[600]} />
+            <Text style={styles.menuText}>Edit Profile</Text>
+            <Icon name="chevron-right" size={18} color={colors.gray[400]} />
+          </TouchableOpacity>
           <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Appointments')}>
             <Icon name="calendar" size={18} color={colors.gray[600]} />
             <Text style={styles.menuText}>Appointments</Text>
@@ -147,6 +172,17 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     color: colors.primary[500],
     marginTop: spacing.xs,
+  },
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: spacing.xs,
+  },
+  locationText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.gray[600],
   },
   ratingRow: {
     flexDirection: 'row',

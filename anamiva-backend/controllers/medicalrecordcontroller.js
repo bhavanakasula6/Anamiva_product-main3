@@ -1,4 +1,6 @@
 const MedicalRecord = require('../models/medicalrecord');
+const Medication = require('../models/medication');
+const path = require('path');
 
 /**
  * Robustly extract a name from a user object
@@ -44,12 +46,37 @@ const transformMedicalRecord = (rec) => {
 
 /* =========================
    CREATE MEDICAL RECORD
+   - Supports multipart/form-data with up to 10 files
+   - Validates file types (JPEG, PNG, PDF) and size (5MB)
 ========================= */
 exports.createMedicalRecord = async (req, res) => {
   try {
+    // Validate file types if files are uploaded
+    const allowedTypes = ['image/jpeg', 'image/png', 'application/pdf'];
+    if (req.files && req.files.length > 0) {
+      for (const file of req.files) {
+        if (!allowedTypes.includes(file.mimetype)) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid file type: ${file.originalname}. Only JPEG, PNG, and PDF are allowed.`,
+          });
+        }
+      }
+    }
+
+    // Build file URLs from uploaded files
+    const fileUrls = req.files
+      ? req.files.map(f => `/uploads/${f.filename}`)
+      : [];
+
     const record = await MedicalRecord.create({
       patientId: req.user.id,
-      ...req.body,
+      title: req.body.title,
+      description: req.body.description,
+      type: req.body.type || 'other',
+      fileUrl: fileUrls[0] || req.body.fileUrl || '',
+      files: fileUrls,
+      status: 'pending',
     });
 
     res.status(201).json({
@@ -62,11 +89,21 @@ exports.createMedicalRecord = async (req, res) => {
 };
 
 /* =========================
-   GET MEDICAL RECORDS (Patient's own)
+   GET MEDICAL RECORDS
+   - Patients see their own records
+   - Doctors can pass ?patientId= to see a specific patient's records
 ========================= */
 exports.getMedicalRecords = async (req, res) => {
   try {
-    const records = await MedicalRecord.find({ patientId: req.user.id })
+    let queryPatientId = req.user.id;
+
+    // If a doctor requests records for a specific patient
+    if (req.query.patientId && req.user.role === 'doctor') {
+      queryPatientId = req.query.patientId;
+    }
+
+    const records = await MedicalRecord.find({ patientId: queryPatientId })
+      .populate('patientId')
       .populate({
         path: 'doctorId',
         populate: { path: 'userId' }
@@ -169,6 +206,65 @@ exports.rejectRecord = async (req, res) => {
     res.json({
       success: true,
       record: transformMedicalRecord(updatedRecord)
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* =========================
+   TRANSCRIBE RECORD (Doctor only)
+   - Transcribes prescription from image
+   - Auto-creates active medications
+========================= */
+exports.transcribeRecord = async (req, res) => {
+  try {
+    const { medications, diagnosis, notes } = req.body;
+
+    const record = await MedicalRecord.findById(req.params.recordId);
+    if (!record) {
+      return res.status(404).json({ success: false, message: 'Record not found' });
+    }
+
+    if (record.status === 'transcribed') {
+      return res.status(400).json({ success: false, message: 'Record already transcribed' });
+    }
+
+    // Update record status
+    record.status = 'transcribed';
+    record.diagnosis = diagnosis || '';
+    record.notes = notes || '';
+    record.doctorId = req.user.doctorInfo || req.user.id;
+    await record.save();
+
+    // Auto-create medications from transcription
+    const createdMedications = [];
+    if (medications && Array.isArray(medications)) {
+      for (const med of medications) {
+        const medication = await Medication.create({
+          patientId: record.patientId,
+          doctorId: record.doctorId,
+          name: med.name,
+          dosage: med.dosage,
+          frequency: med.frequency,
+          startDate: med.startDate || new Date(),
+          endDate: med.endDate || null,
+        });
+        createdMedications.push(medication);
+      }
+    }
+
+    const updatedRecord = await MedicalRecord.findById(record._id)
+      .populate('patientId')
+      .populate({
+        path: 'doctorId',
+        populate: { path: 'userId' }
+      });
+
+    res.json({
+      success: true,
+      record: transformMedicalRecord(updatedRecord),
+      medications: createdMedications,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

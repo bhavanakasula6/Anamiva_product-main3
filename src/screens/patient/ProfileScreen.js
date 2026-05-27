@@ -148,6 +148,20 @@ const ProfileScreen = ({ navigation }) => {
               {user?.phoneNumber || user?.phone || 'Not set'}
             </Text>
           </View>
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>City</Text>
+            <Text style={styles.infoValue}>
+              {(typeof user?.address === 'object' ? user?.address?.city : null) || 'Not set'}
+            </Text>
+          </View>
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>State</Text>
+            <Text style={styles.infoValue}>
+              {(typeof user?.address === 'object' ? user?.address?.state : null) || 'Not set'}
+            </Text>
+          </View>
         </Card>
 
         {/* Main Menu */}

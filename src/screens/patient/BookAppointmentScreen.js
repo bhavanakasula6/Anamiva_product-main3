@@ -3,7 +3,7 @@
  * Select date, time slot, and book appointment
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { usePatient } from '../../contexts/PatientContext';
 import { useAuth } from '../../contexts/AuthContext';
@@ -65,6 +66,18 @@ const BookAppointmentScreen = ({ route, navigation }) => {
     }
   }, [selectedDate]);
 
+  // Auto-refresh slots every 30 seconds
+  const refreshIntervalRef = useRef(null);
+  useFocusEffect(
+    useCallback(() => {
+      if (selectedDate) loadAvailability();
+      refreshIntervalRef.current = setInterval(() => {
+        if (selectedDate) loadAvailability();
+      }, 30000);
+      return () => clearInterval(refreshIntervalRef.current);
+    }, [selectedDate])
+  );
+
   const generateDates = () => {
     const next = [];
     for (let i = 0; i < 7; i++) {
@@ -83,7 +96,8 @@ const BookAppointmentScreen = ({ route, navigation }) => {
   };
 
   const loadAvailability = async () => {
-    const res = await getDoctorAvailability(doctorId, selectedDate);
+    const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
+    const res = await getDoctorAvailability(doctorId, dateStr);
     if (res.success) setAvailableSlots(res.slots);
   };
 
@@ -98,7 +112,7 @@ const BookAppointmentScreen = ({ route, navigation }) => {
     const res = await bookAppointment({
       doctorId,
       patientId: user.id,
-      date: selectedDate,
+      date: `${selectedDate.getFullYear()}-${String(selectedDate.getMonth() + 1).padStart(2, '0')}-${String(selectedDate.getDate()).padStart(2, '0')}`,
       time: selectedTime,
       type: appointmentType,
       symptoms,
@@ -271,8 +285,18 @@ const BookAppointmentScreen = ({ route, navigation }) => {
           <Text style={styles.sectionTitle}>Select Time Slot</Text>
 
           <View style={styles.timeGrid}>
-            {availableSlots.length ? (
-              availableSlots.map((slot, idx) => {
+            {(() => {
+              const now = new Date();
+              const isToday = selectedDate?.toDateString() === now.toDateString();
+              const displaySlots = availableSlots.filter(s => {
+                if (!isToday) return true;
+                // Client-side: hide past time slots for today
+                const [h, m] = s.time.split(':').map(Number);
+                const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+                return slotTime > now && s.available;
+              });
+              return displaySlots.length ? (
+              displaySlots.map((slot, idx) => {
                 const isSelected = selectedTime === slot.time;
 
                 return (
@@ -316,7 +340,8 @@ const BookAppointmentScreen = ({ route, navigation }) => {
               <Text style={styles.noSlots}>
                 No slots available for this date
               </Text>
-            )}
+            );
+            })()}
           </View>
         </View>
 

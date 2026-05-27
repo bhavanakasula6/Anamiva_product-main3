@@ -3,7 +3,7 @@
  * Makes real HTTP calls to the backend server
  */
 
-import httpClient, { getToken, removeToken, setToken } from './httpClient';
+import httpClient, { getToken, removeToken, setToken, API_BASE_URL } from './httpClient';
 
 import {
   CONSENT_TYPES,
@@ -105,6 +105,58 @@ export const authAPI = {
 
     return response;
   },
+
+  // Upload avatar image (multipart/form-data)
+  uploadAvatar: async (imageUri) => {
+    try {
+      const token = await getToken();
+      console.log('uploadAvatar: token exists?', !!token, 'uri:', imageUri?.substring(0, 50));
+
+      if (!token) {
+        return { success: false, message: 'Not authenticated. Please login again.' };
+      }
+
+      const formData = new FormData();
+      const filename = imageUri.split('/').pop();
+      const ext = filename.split('.').pop()?.toLowerCase() || 'jpg';
+      const mimeType = ext === 'png' ? 'image/png' : 'image/jpeg';
+
+      formData.append('avatar', {
+        uri: imageUri,
+        name: filename || `avatar_${Date.now()}.${ext}`,
+        type: mimeType,
+      });
+
+      const url = `${API_BASE_URL}/auth/upload-avatar`;
+      console.log('uploadAvatar: posting to', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          // Do NOT set Content-Type — fetch sets it automatically with boundary for FormData
+        },
+        body: formData,
+      });
+
+      console.log('uploadAvatar: response status', response.status);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('uploadAvatar: server error', data);
+        return { success: false, message: data.message || 'Upload failed' };
+      }
+
+      if (data.success && data.user) {
+        currentUser = data.user;
+      }
+
+      return { success: true, ...data };
+    } catch (error) {
+      console.error('Avatar upload error:', error);
+      return { success: false, message: error.message || 'Network error' };
+    }
+  },
 };
 
 // ============================================
@@ -136,6 +188,7 @@ export const doctorAPI = {
     if (filters.radius) params.append('radius', filters.radius);
     if (filters.sortBy) params.append('sortBy', filters.sortBy);
     if (filters.query) params.append('query', filters.query);
+    if (filters.city) params.append('city', filters.city);
 
     const queryString = params.toString();
     const endpoint = queryString ? `/doctors?${queryString}` : '/doctors';
@@ -237,6 +290,24 @@ export const appointmentAPI = {
     const response = await httpClient.post(`/appointments/${appointmentId}/prescription`, prescriptionData);
     return response;
   },
+
+  // Start video call (doctor only)
+  startCall: async (appointmentId) => {
+    const response = await httpClient.post(`/appointments/${appointmentId}/call/start`);
+    return response;
+  },
+
+  // Join video call (patient only)
+  joinCall: async (appointmentId) => {
+    const response = await httpClient.post(`/appointments/${appointmentId}/call/join`);
+    return response;
+  },
+
+  // End video call (either party)
+  endCall: async (appointmentId) => {
+    const response = await httpClient.post(`/appointments/${appointmentId}/call/end`);
+    return response;
+  },
 };
 
 // ============================================
@@ -246,7 +317,7 @@ export const appointmentAPI = {
 export const emergencyAPI = {
   // Create emergency request
   createEmergencyRequest: async (requestData) => {
-    const response = await httpClient.post('/emergencies', requestData);
+    const response = await httpClient.post('/emergency/request', requestData);
     return response;
   },
 
@@ -257,45 +328,43 @@ export const emergencyAPI = {
       longitude: longitude.toString(),
       radius: radius.toString(),
     });
-    const response = await httpClient.get(`/emergencies/nearby?${params.toString()}`);
+    const response = await httpClient.get(`/emergency/nearby?${params.toString()}`);
     return response;
   },
 
   // Accept emergency request (doctor only)
   acceptEmergencyRequest: async (requestId) => {
-    const response = await httpClient.put(`/emergencies/${requestId}/status`, {
-      status: EMERGENCY_STATUS.ACCEPTED,
-    });
+    const response = await httpClient.post(`/emergency/${requestId}/accept`, {});
     return response;
   },
 
   // Update emergency status
   updateEmergencyStatus: async (requestId, status) => {
-    const response = await httpClient.put(`/emergencies/${requestId}/status`, { status });
+    const response = await httpClient.put(`/emergency/${requestId}/status`, { status });
     return response;
   },
 
   // Get emergency chat messages
   getChatMessages: async (requestId) => {
-    const response = await httpClient.get(`/emergencies/${requestId}/chat`);
+    const response = await httpClient.get(`/emergency/${requestId}/messages`);
     return response;
   },
 
   // Send chat message
   sendChatMessage: async (requestId, message) => {
-    const response = await httpClient.post(`/emergencies/${requestId}/chat`, { message });
+    const response = await httpClient.post(`/emergency/${requestId}/messages`, { message });
     return response;
   },
 
   // Get active emergency for patient
   getActiveEmergency: async () => {
-    const response = await httpClient.get('/emergencies/active');
+    const response = await httpClient.get('/emergency/active');
     return response;
   },
 
   // Cancel emergency
   cancelEmergency: async (requestId) => {
-    const response = await httpClient.put(`/emergencies/${requestId}/status`, {
+    const response = await httpClient.put(`/emergency/${requestId}/status`, {
       status: EMERGENCY_STATUS.CANCELLED,
     });
     return response;
@@ -443,13 +512,13 @@ export const notificationAPI = {
 
   // Mark as read
   markAsRead: async (notificationId) => {
-    const response = await httpClient.put(`/notifications/${notificationId}/read`, {});
+    const response = await httpClient.patch(`/notifications/${notificationId}/read`, {});
     return response;
   },
 
   // Mark all as read
   markAllAsRead: async () => {
-    const response = await httpClient.put('/notifications/read-all', {});
+    const response = await httpClient.post('/notifications/read-all', {});
     return response;
   },
 

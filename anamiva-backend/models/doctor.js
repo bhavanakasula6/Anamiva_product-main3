@@ -19,6 +19,11 @@ const doctorSchema = new mongoose.Schema(
       hours: String
     },
 
+    consultingHours: {
+      start: { type: Number, default: 9 },  // 24h format, e.g. 9 = 9 AM
+      end: { type: Number, default: 17 },    // 17 = 5 PM
+    },
+
     availability: {
       online: { type: Boolean, default: false },
       clinicOpen: { type: Boolean, default: false },

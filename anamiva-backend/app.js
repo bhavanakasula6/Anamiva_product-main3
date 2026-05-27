@@ -13,6 +13,7 @@ const medicalRecordRoutes = require("./routes/medicalrecordroutes");
 const medicationRoutes = require("./routes/medicationroutes");
 const notificationRoutes = require("./routes/notificationroutes");
 const analyticsRoutes = require("./routes/analyticsroutes");
+const consentRoutes = require("./routes/consentroutes");
 
 const app = express();
 
@@ -22,6 +23,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files as static assets
+const path = require("path");
+const { UPLOAD_PATH } = require("./config/env");
+app.use("/uploads", express.static(path.resolve(UPLOAD_PATH)));
 
 // Logging
 if (process.env.NODE_ENV === "development") {
@@ -44,11 +50,12 @@ app.get("/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/doctors", doctorRoutes);
 app.use("/api/appointments", appointmentRoutes);
-app.use("/api/emergencies", emergencyRoutes);
+app.use("/api/emergency", emergencyRoutes);
 app.use("/api/medical-records", medicalRecordRoutes);
 app.use("/api/medications", medicationRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api", consentRoutes);
 
 /* =========================
    404 HANDLER

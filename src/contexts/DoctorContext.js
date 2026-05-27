@@ -3,7 +3,7 @@
  * Manages doctor-specific data and operations
  */
 
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import {
   appointmentAPI,
   emergencyAPI,
@@ -17,6 +17,7 @@ import {
 } from '../services/api';
 import { useAuth } from './AuthContext';
 import { APPOINTMENT_STATUS, CONSENT_STATUS, CONSENT_TYPES, ACCESS_STATUS } from '../data/constants';
+import socketService from '../services/socketService';
 
 const DoctorContext = createContext(null);
 
@@ -26,6 +27,7 @@ export const DoctorProvider = ({ children }) => {
   // State
   const [appointments, setAppointments] = useState([]);
   const [emergencyRequests, setEmergencyRequests] = useState([]);
+  const [activeEmergency, setActiveEmergency] = useState(null);
   const [pendingRecords, setPendingRecords] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [analyticsFilter, setAnalyticsFilter] = useState({
@@ -39,16 +41,95 @@ export const DoctorProvider = ({ children }) => {
 
   // Load doctor data on mount
   useEffect(() => {
-    if (user && isDoctor()) {
+    if (user && user.role === 'doctor') {
+      console.log('[DoctorContext] Loading doctor data for user:', user._id || user.id);
       loadDoctorData();
     }
-  }, [user, isDoctor]);
+  }, [user?.id, user?._id, user?.role]);
+
+  // Listen for real-time events from patients
+  // Uses an interval to check socket availability since SocketContext may reconnect
+  const socketListenersRegistered = useRef(false);
+
+  useEffect(() => {
+    if (!user || user.role !== 'doctor') return;
+
+    const registerListeners = () => {
+      const sock = socketService.getSocket();
+      if (!sock) return false;
+
+      // Avoid duplicate listeners
+      sock.off('consent-granted');
+      sock.off('access-request-approved');
+      sock.off('appointment-booked');
+      sock.off('emergency-status-updated');
+
+      sock.on('consent-granted', (data) => {
+        console.log('[DoctorContext] Consent granted by patient:', data);
+        loadDoctorData();
+      });
+      sock.on('access-request-approved', (data) => {
+        console.log('[DoctorContext] Access request approved by patient:', data);
+        loadDoctorData();
+      });
+      sock.on('appointment-booked', (data) => {
+        console.log('[DoctorContext] New appointment booked:', data);
+        loadAppointments();
+        loadNotifications();
+      });
+      sock.on('emergency-status-updated', (data) => {
+        console.log('[DoctorContext] Emergency status updated:', data);
+        if (data.status === 'cancelled' || data.status === 'completed') {
+          setActiveEmergency(null);
+          setEmergencyRequests(prev =>
+            prev.filter(req => (req._id || req.id) !== data.emergencyId)
+          );
+        } else {
+          loadActiveEmergency();
+        }
+      });
+
+      // Re-register listeners on socket reconnect
+      sock.on('connect', () => {
+        console.log('[DoctorContext] Socket reconnected, re-registering listeners');
+        registerListeners();
+      });
+
+      socketListenersRegistered.current = true;
+      return true;
+    };
+
+    // Try immediately, then poll until socket is available
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) {
+          clearInterval(interval);
+        }
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const sock = socketService.getSocket();
+      if (sock) {
+        sock.off('consent-granted');
+        sock.off('access-request-approved');
+        sock.off('appointment-booked');
+        sock.off('emergency-status-updated');
+      }
+      socketListenersRegistered.current = false;
+    };
+  }, [user?.id, user?._id, user?.role]);
 
   const loadDoctorData = async () => {
     try {
       setLoading(true);
+      // Load appointments first so dashboard appears quickly
+      await loadAppointments();
+      setLoading(false);
+      // Load remaining data in background
       await Promise.all([
-        loadAppointments(),
+        loadActiveEmergency(),
         loadPendingRecords(),
         loadNotifications(),
         loadAnalytics(),
@@ -66,13 +147,15 @@ export const DoctorProvider = ({ children }) => {
 
   const loadAppointments = async (filters = {}) => {
     try {
+      console.log('[DoctorContext] Loading appointments with filters:', JSON.stringify(filters));
       const response = await appointmentAPI.getAppointments(filters);
+      console.log('[DoctorContext] Appointments response:', response.success, 'count:', response.appointments?.length);
       if (response.success) {
-        setAppointments(response.appointments);
+        setAppointments(response.appointments || []);
       }
       return response;
     } catch (error) {
-      console.error('Error loading appointments:', error);
+      console.error('[DoctorContext] Error loading appointments:', error?.message || error);
       return { success: false, message: 'Failed to load appointments' };
     }
   };
@@ -85,6 +168,8 @@ export const DoctorProvider = ({ children }) => {
         setAppointments(prev =>
           prev.map(apt => apt.id === appointmentId ? response.appointment : apt)
         );
+        // Also reload from server to ensure state is fully in sync
+        loadAppointments();
       }
       return response;
     } catch (error) {
@@ -160,11 +245,24 @@ export const DoctorProvider = ({ children }) => {
   // Emergency
   // ============================================
 
-  const loadNearbyEmergencies = async (latitude, longitude, radius = 5) => {
+  const loadActiveEmergency = async () => {
+    try {
+      const response = await emergencyAPI.getActiveEmergency();
+      if (response.success) {
+        setActiveEmergency(response.emergency || null);
+      }
+      return response;
+    } catch (error) {
+      console.error('[DoctorContext] Error loading active emergency:', error?.message || error);
+      return { success: false };
+    }
+  };
+
+  const loadNearbyEmergencies = async (latitude, longitude, radius = 50) => {
     try {
       const response = await emergencyAPI.getNearbyEmergencyRequests(latitude, longitude, radius);
       if (response.success) {
-        setEmergencyRequests(response.requests);
+        setEmergencyRequests(response.emergencies || response.requests || []);
         setLastLocation({ lat: latitude, lng: longitude });
       }
       return response;
@@ -179,8 +277,10 @@ export const DoctorProvider = ({ children }) => {
       const response = await emergencyAPI.acceptEmergencyRequest(requestId);
       if (response.success) {
         setEmergencyRequests(prev =>
-          prev.filter(req => req.id !== requestId)
+          prev.filter(req => (req._id || req.id) !== requestId)
         );
+        // Reload from server to get fully populated emergency data for the dashboard
+        await loadActiveEmergency();
       }
       return response;
     } catch (error) {
@@ -365,9 +465,10 @@ export const DoctorProvider = ({ children }) => {
   };
 
   const getPatientAccessStatus = async ({ patientId, appointmentId }) => {
+    const doctorId = user.doctorProfileId || user.id || user._id;
     const res = await consentAPI.getAccessStatus({
       patientId,
-      doctorId: user.id,
+      doctorId,
       appointmentId,
     });
 
@@ -397,11 +498,13 @@ export const DoctorProvider = ({ children }) => {
       return { success: false, error: 'ACCESS_DENIED_BY_PATIENT' };
     }
 
-    return accessRequestAPI.createRequest({
-      patientId,
-      doctorId: user.id,
-      appointmentId,
-    });
+    try {
+      const res = await accessRequestAPI.requestAccess(patientId, appointmentId);
+      return res;
+    } catch (error) {
+      console.error('Error requesting access:', error);
+      return { success: false, message: 'Failed to request access' };
+    }
   };
 
   const cancelAccessRequest = async (requestId) => {
@@ -491,6 +594,7 @@ export const DoctorProvider = ({ children }) => {
   const value = {
     appointments,
     emergencyRequests,
+    activeEmergency,
     pendingRecords,
     notifications,
     analytics,
@@ -501,6 +605,7 @@ export const DoctorProvider = ({ children }) => {
     getPatientAccessStatus,
     getAccessStatus,
     getPatientsWithAccess,
+    loadActiveEmergency,
     loadAppointments,
     updateAppointmentStatus,
     addClinicalNotes,

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useAuth } from '../../contexts/AuthContext';
 import { usePatient } from '../../contexts/PatientContext';
 import {
   borderRadius,
@@ -32,16 +33,21 @@ import {
 } from '../../components/common';
 
 import Icon from '../../components/Icon';
-import { SPECIALIZATIONS } from '../../data/constants';
+import { SPECIALIZATIONS, INDIAN_STATES, CITIES_BY_STATE, MAJOR_CITIES } from '../../data/constants';
 
 const DoctorSearchScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const { searchDoctors } = usePatient();
+
+  const patientCity = typeof user?.address === 'object' ? user?.address?.city || '' : '';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialization, setSelectedSpecialization] = useState(null);
   const [viewMode, setViewMode] = useState('list');
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showLocationFilter, setShowLocationFilter] = useState(false);
+  const [selectedCity, setSelectedCity] = useState(patientCity);
 
   const [filters, setFilters] = useState({
     availableNow: false,
@@ -50,16 +56,25 @@ const DoctorSearchScreen = ({ navigation }) => {
 
   useEffect(() => {
     loadDoctors();
-  }, [selectedSpecialization, filters]);
+  }, [selectedSpecialization, filters, selectedCity]);
 
   const loadDoctors = async () => {
     setLoading(true);
     try {
+      // Always pass patient location for distance calculation
+      const hasLocation = user?.location?.latitude;
       const response = await searchDoctors({
         query: searchQuery,
         specialization: selectedSpecialization,
         availableNow: filters.availableNow,
         sortBy: filters.sortBy,
+        // Pass city filter for city-based filtering
+        ...(selectedCity && { city: selectedCity }),
+        ...(hasLocation && {
+          latitude: user.location.latitude,
+          longitude: user.location.longitude,
+          radius: 50,
+        }),
       });
 
       if (response?.success) {
@@ -68,6 +83,14 @@ const DoctorSearchScreen = ({ navigation }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const getDoctorName = (doc) => {
+    const u = doc.userId;
+    if (u?.name) return u.name;
+    if (u?.fullName) return u.fullName;
+    if (u?.firstName) return `${u.firstName} ${u.lastName || ''}`.trim();
+    return doc.fullName || 'Doctor';
   };
 
   const DoctorCard = ({ doctor }) => (
@@ -82,14 +105,27 @@ const DoctorSearchScreen = ({ navigation }) => {
         <Avatar
           source={{ uri: doctor.userId?.profilePicture || doctor.avatar }}
           size={60}
-          name={doctor.userId?.name || doctor.fullName}
+          name={getDoctorName(doctor)}
         />
 
         <View style={styles.doctorInfo}>
-          <Text style={styles.doctorName}>{doctor.userId?.name || doctor.fullName}</Text>
+          <Text style={styles.doctorName}>{getDoctorName(doctor)}</Text>
           <Text style={styles.doctorSpecialty}>
             {doctor.speciality || doctor.specialization}
           </Text>
+          {(() => {
+            const addr = doctor.userId?.address;
+            const city = (addr && typeof addr === 'object') ? addr.city : null;
+            const clinicAddr = doctor.clinicInfo?.address;
+            const location = city || clinicAddr;
+            if (!location) return null;
+            return (
+              <View style={styles.cityRow}>
+                <Icon name="map-pin" size={12} color={colors.gray[500]} />
+                <Text style={styles.doctorCity}>{location}</Text>
+              </View>
+            );
+          })()}
 
           <View style={styles.ratingRow}>
             <Icon name="star" size={14} color={colors.warning[500]} />
@@ -214,6 +250,38 @@ const DoctorSearchScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[
+              styles.filterChip,
+              selectedCity && styles.locationChipActive,
+            ]}
+            onPress={() => setShowLocationFilter(!showLocationFilter)}
+          >
+            <Icon
+              name="map-pin"
+              size={14}
+              color={selectedCity ? colors.primary[500] : colors.gray[500]}
+            />
+            <Text style={[
+              styles.filterText,
+              selectedCity && { color: colors.primary[600] },
+            ]}>
+              {selectedCity || 'All Cities'}
+            </Text>
+            {selectedCity ? (
+              <TouchableOpacity
+                onPress={(e) => {
+                  e.stopPropagation && e.stopPropagation();
+                  setSelectedCity('');
+                  setShowLocationFilter(false);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon name="x" size={12} color={colors.primary[500]} />
+              </TouchableOpacity>
+            ) : null}
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.sortChip}
             onPress={() =>
               setFilters(f => ({
@@ -231,6 +299,86 @@ const DoctorSearchScreen = ({ navigation }) => {
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* City Filter Dropdown */}
+        {showLocationFilter && (
+          <View style={styles.cityFilterContainer}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.cityChipsContent}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.cityChip,
+                  !selectedCity && styles.cityChipSelected,
+                ]}
+                onPress={() => {
+                  setSelectedCity('');
+                  setShowLocationFilter(false);
+                }}
+              >
+                <Text style={[
+                  styles.cityChipText,
+                  !selectedCity && styles.cityChipTextSelected,
+                ]}>
+                  All Cities
+                </Text>
+              </TouchableOpacity>
+              {patientCity ? (
+                <TouchableOpacity
+                  style={[
+                    styles.cityChip,
+                    selectedCity === patientCity && styles.cityChipSelected,
+                    { borderColor: colors.success[400] },
+                  ]}
+                  onPress={() => {
+                    setSelectedCity(patientCity);
+                    setShowLocationFilter(false);
+                  }}
+                >
+                  <Icon name="map-pin" size={12} color={colors.success[600]} />
+                  <Text style={[
+                    styles.cityChipText,
+                    selectedCity === patientCity && styles.cityChipTextSelected,
+                  ]}>
+                    {patientCity} (My City)
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {MAJOR_CITIES.filter(c => c !== patientCity).slice(0, 30).map((ct) => (
+                <TouchableOpacity
+                  key={ct}
+                  style={[
+                    styles.cityChip,
+                    selectedCity === ct && styles.cityChipSelected,
+                  ]}
+                  onPress={() => {
+                    setSelectedCity(ct);
+                    setShowLocationFilter(false);
+                  }}
+                >
+                  <Text style={[
+                    styles.cityChipText,
+                    selectedCity === ct && styles.cityChipTextSelected,
+                  ]}>
+                    {ct}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Results info */}
+        {selectedCity && !loading && (
+          <View style={styles.resultInfoRow}>
+            <Icon name="map-pin" size={14} color={colors.primary[500]} />
+            <Text style={styles.resultInfoText}>
+              Showing doctors in {selectedCity}
+            </Text>
+          </View>
+        )}
 
         {/* Results */}
         {loading ? (
@@ -251,7 +399,9 @@ const DoctorSearchScreen = ({ navigation }) => {
                   No doctors found
                 </Text>
                 <Text style={styles.emptySubtext}>
-                  Try adjusting filters
+                  {selectedCity
+                    ? `No doctors found in ${selectedCity}. Try selecting a different city.`
+                    : 'Try adjusting filters'}
                 </Text>
               </View>
             }
@@ -295,22 +445,26 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
-    height: 150,
+    minHeight: 52,
+    maxHeight: 56,
   },
   specializationsContent: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
     paddingBottom: spacing.md,
+    paddingRight: spacing.xl,
     gap: spacing.sm,
   },
   specializationChip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
     backgroundColor: colors.gray[100],
     marginRight: spacing.sm,
     justifyContent: 'center',
+    height: 34,
   },
   specializationChipActive: {
     backgroundColor: colors.primary[500],
@@ -343,6 +497,69 @@ const styles = StyleSheet.create({
     backgroundColor: colors.success[50],
     borderWidth: 1,
     borderColor: colors.success[500],
+  },
+
+  locationChipActive: {
+    backgroundColor: colors.primary[50],
+    borderWidth: 1,
+    borderColor: colors.primary[500],
+  },
+
+  cityFilterContainer: {
+    backgroundColor: colors.white,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+
+  cityChipsContent: {
+    paddingHorizontal: spacing.lg,
+    gap: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  cityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.gray[100],
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    marginRight: spacing.sm,
+  },
+
+  cityChipSelected: {
+    backgroundColor: colors.primary[50],
+    borderColor: colors.primary[500],
+  },
+
+  cityChipText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.gray[700],
+  },
+
+  cityChipTextSelected: {
+    color: colors.primary[600],
+  },
+
+  resultInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    backgroundColor: colors.primary[50],
+  },
+
+  resultInfoText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.primary[600],
   },
 
   sortChip: {
@@ -387,6 +604,18 @@ const styles = StyleSheet.create({
   doctorSpecialty: {
     fontSize: typography.fontSize.sm,
     color: colors.gray[600],
+  },
+
+  cityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 2,
+  },
+
+  doctorCity: {
+    fontSize: typography.fontSize.xs,
+    color: colors.gray[500],
   },
 
   ratingRow: {

@@ -11,3 +11,4 @@ export { default as PatientRecordsScreen } from './PatientRecordsScreen';
 export { default as DoctorPatientsScreen } from './DoctorPatientsScreen';
 export { default as DoctorRecordVerificationScreen } from './DoctorRecordVerificationScreen';
 export { default as PrescriptionFormScreen } from './PrescriptionFormScreen';
+export { default as DoctorEditProfileScreen } from './DoctorEditProfileScreen';

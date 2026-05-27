@@ -156,6 +156,22 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Refresh user from server (e.g. after avatar upload)
+  const refreshUser = async () => {
+    try {
+      const response = await authAPI.getCurrentUser();
+      if (response.success && response.user) {
+        setUser(response.user);
+        api.setCurrentUser(response.user);
+        await storage.saveUser(response.user);
+      }
+      return response;
+    } catch (error) {
+      console.error('Error refreshing user:', error);
+      return { success: false, message: 'Failed to refresh user' };
+    }
+  };
+
   // Check if user is patient
   const isPatient = () => {
     return user?.role === USER_ROLES.PATIENT;
@@ -180,6 +196,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout: logoutUser,
     updateProfile,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

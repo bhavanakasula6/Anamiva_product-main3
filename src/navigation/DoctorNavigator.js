@@ -19,9 +19,9 @@ import {
   EmergencyListScreen,
   PatientRecordsScreen,
   PrescriptionFormScreen,
+  DoctorEditProfileScreen,
 } from '../screens/doctor';
 
-import EditProfileScreen from '../screens/patient/EditProfileScreen';
 
 import {
   AppointmentDetailsScreen,
@@ -30,8 +30,10 @@ import {
   RecordDetailsScreen,
   SettingsScreen,
 } from '../screens/shared';
+import VideoCallScreen from '../screens/shared/VideoCallScreen';
 
 import Icon from '../components/Icon';
+import { useDoctor } from '../contexts/DoctorContext';
 import { colors } from '../styles/theme';
 
 const Tab = createBottomTabNavigator();
@@ -52,9 +54,10 @@ const HomeStack = () => (
     <Stack.Screen name="DoctorRecordVerification" component={DoctorRecordVerificationScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="DoctorEditProfile" component={DoctorEditProfileScreen} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="RecordDetails" component={RecordDetailsScreen} />
+    <Stack.Screen name="VideoCall" component={VideoCallScreen} />
   </Stack.Navigator>
 );
 
@@ -63,9 +66,10 @@ const AppointmentsStack = () => (
     <Stack.Screen name="DoctorAppointmentsList" component={DoctorAppointmentsScreen} />
     <Stack.Screen name="AppointmentDetails" component={AppointmentDetailsScreen} />
     <Stack.Screen name="PrescriptionForm" component={PrescriptionFormScreen} />
+    <Stack.Screen name="VideoCall" component={VideoCallScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="DoctorEditProfile" component={DoctorEditProfileScreen} />
   </Stack.Navigator>
 );
 
@@ -80,7 +84,7 @@ const AnalyticsStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="AnalyticsMain" component={AnalyticsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="DoctorEditProfile" component={DoctorEditProfileScreen} />
   </Stack.Navigator>
 );
 
@@ -88,7 +92,7 @@ const ProfileStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="DoctorProfileMain" component={DoctorProfileScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="DoctorEditProfile" component={DoctorEditProfileScreen} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
   </Stack.Navigator>
@@ -98,6 +102,7 @@ const ProfileStack = () => (
 
 const DoctorNavigator = () => {
   const insets = useSafeAreaInsets();
+  const { emergencyRequests } = useDoctor();
 
   return (
     <Tab.Navigator
@@ -109,9 +114,9 @@ const DoctorNavigator = () => {
           backgroundColor: colors.white,
           borderTopWidth: 1,
           borderTopColor: colors.gray[200],
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 5,
+          paddingBottom: Math.max(insets.bottom, 5),
           paddingTop: 6,
-          height: Platform.OS === 'ios' ? 60 + insets.bottom : 60,
+          height: 60 + Math.max(insets.bottom, 5),
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -146,7 +151,7 @@ const DoctorNavigator = () => {
           tabBarIcon: ({ color }) => (
             <Icon name="warning" size={22} color={color} />
           ),
-          tabBarBadge: '2',
+          tabBarBadge: emergencyRequests?.length > 0 ? emergencyRequests.length.toString() : undefined,
           tabBarBadgeStyle: {
             backgroundColor: colors.danger[500],
             color: colors.white,

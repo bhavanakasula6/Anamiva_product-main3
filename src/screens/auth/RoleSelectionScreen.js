@@ -69,12 +69,12 @@ const RoleSelectionScreen = ({ navigation, route }) => {
       await selectRole(phone, selectedRole);
 
       if (selectedRole === USER_ROLES.PATIENT) {
-        navigation.navigate('PatientProfileSetup', {
+        navigation.replace('PatientProfileSetup', {
           phone,
           role: selectedRole,
         });
       } else {
-        navigation.navigate('DoctorProfileSetup', {
+        navigation.replace('DoctorProfileSetup', {
           phone,
           role: selectedRole,
         });

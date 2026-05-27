@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import {
   FlatList,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,9 +20,16 @@ import { APPOINTMENT_STATUS } from '../../data/constants';
 import { borderRadius, colors, shadows, spacing, typography } from '../../styles/theme';
 
 const AppointmentsScreen = ({ navigation }) => {
-  const { appointments, loading } = usePatient();
+  const { appointments, loading, loadAppointments } = usePatient();
   const [activeTab, setActiveTab] = useState(APPOINTMENT_STATUS.PENDING);
   const [filteredAppointments, setFilteredAppointments] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadAppointments();
+    setRefreshing(false);
+  };
 
   const tabs = [
     { id: APPOINTMENT_STATUS.PENDING, label: 'Pending' },
@@ -31,8 +39,21 @@ const AppointmentsScreen = ({ navigation }) => {
   ];
 
   useEffect(() => {
+    const now = new Date();
     const filtered = appointments
-      .filter(a => a.status === activeTab)
+      .filter(a => {
+        if (a.status !== activeTab) return false;
+        if (activeTab === APPOINTMENT_STATUS.UPCOMING) {
+          // Build full datetime from date + time
+          const aptDate = new Date(a.date);
+          if (a.time) {
+            const [hours, minutes] = a.time.split(':').map(Number);
+            aptDate.setHours(hours, minutes, 0, 0);
+          }
+          return aptDate > now;
+        }
+        return true;
+      })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
     setFilteredAppointments(filtered);
@@ -117,7 +138,7 @@ const AppointmentsScreen = ({ navigation }) => {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <Header
-        title="Analytics"
+        title="Appointments"
         leftIcon="back"
         onLeftPress={() => navigation.goBack()}
       />
@@ -154,6 +175,14 @@ const AppointmentsScreen = ({ navigation }) => {
           )}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[colors.primary[500]]}
+              tintColor={colors.primary[500]}
+            />
+          }
           ListEmptyComponent={
             <EmptyState
               icon={<Icon name="calendar" size={48} color={colors.primary[400]} />}

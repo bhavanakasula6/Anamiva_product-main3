@@ -20,9 +20,18 @@ const HomeScreen = ({ navigation }) => {
   const unreadCount = notifications?.filter(n => !n.read).length || 0;
 
   useEffect(() => {
-    // Filter upcoming appointments
+    // Filter upcoming appointments using date + time
+    const now = new Date();
     const upcoming = appointments
-      .filter(apt => apt.status === APPOINTMENT_STATUS.UPCOMING)
+      .filter(apt => {
+        if (apt.status !== APPOINTMENT_STATUS.UPCOMING) return false;
+        const aptDate = new Date(apt.date);
+        if (apt.time) {
+          const [hours, minutes] = apt.time.split(':').map(Number);
+          aptDate.setHours(hours, minutes, 0, 0);
+        }
+        return aptDate > now;
+      })
       .sort((a, b) => new Date(a.date) - new Date(b.date))
       .slice(0, 3);
     setUpcomingAppointments(upcoming);
@@ -113,13 +122,13 @@ const HomeScreen = ({ navigation }) => {
             >
               <View style={styles.appointmentHeader}>
                 <Avatar
-                  source={{ uri: appointment.doctor.avatar }}
+                  source={{ uri: appointment.doctor?.avatar }}
                   size={50}
-                  name={appointment.doctor.name}
+                  name={appointment.doctor?.name || 'Doctor'}
                 />
                 <View style={styles.appointmentInfo}>
-                  <Text style={styles.doctorName}>{appointment.doctor.name}</Text>
-                  <Text style={styles.doctorSpecialty}>{appointment.doctor.specialization}</Text>
+                  <Text style={styles.doctorName}>{appointment.doctor?.name || 'Doctor'}</Text>
+                  <Text style={styles.doctorSpecialty}>{appointment.doctor?.specialization || appointment.doctor?.speciality || ''}</Text>
                 </View>
                 <Badge variant="primary" size="sm">
                   {appointment.type}

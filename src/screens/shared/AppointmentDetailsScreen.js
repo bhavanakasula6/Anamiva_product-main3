@@ -32,6 +32,7 @@ import {
   ACCESS_REQUEST_STATUS,
   ACCESS_STATUS,
   APPOINTMENT_STATUS,
+  CALL_STATUS,
 } from '../../data/constants';
 import { appointmentAPI } from '../../services/api';
 
@@ -67,10 +68,10 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   } = useDoctor();
 
   const [loading, setLoading] = useState(true);
-  const [doctorAccessStatus, setDoctorAccessStatus] = useState(null);
+  const [doctorAccessStatus, setDoctorAccessStatus] = useState({ status: 'NO_ACCESS', type: null });
   const [appointment, setAppointment] = useState(null);
   const [prescription, setPrescription] = useState(null);
-  const [showAccess, setShowAccess] = useState(false);
+  const [showAccess, setShowAccess] = useState(isDoctor);
 
   const isCompleted = appointment?.status === APPOINTMENT_STATUS.COMPLETED;
   const isCancelled = appointment?.status === APPOINTMENT_STATUS.CANCELLED;
@@ -255,12 +256,9 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
       return;
     }
 
-    const status = await getPatientAccessStatus({
-      patientId: appointment.patientId,
-      appointmentId: appointment.id,
-    });
-
-    setDoctorAccessStatus(status);
+    // Optimistic update + user feedback
+    setDoctorAccessStatus({ status: 'PENDING' });
+    Alert.alert('Request Sent', 'Your consultation access request has been sent to the patient.');
   };
 
   if (loading || !appointment) {
@@ -325,7 +323,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
             <Card style={styles.card}>
               <Text style={styles.section}>Prescription</Text>
 
-              {prescription.medications.map((med, i) => (
+              {prescription?.medications?.map((med, i) => (
                 <View key={i} style={styles.prescriptionItem}>
                   <Text style={styles.medName}>{med.name}</Text>
                   <Text style={styles.medSub}>
@@ -388,6 +386,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                             await approveRequest(doctorRequest);
                             await loadRequests();
                             await checkConsent(appointment.id);
+                            Alert.alert('Access Granted', 'Doctor now has access to your consultation records.');
                           }}
                         >
                           Approve Request
@@ -400,8 +399,8 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                             await loadRequests();
 
                             Alert.alert(
-                              'Request Denied',
-                              'You denied the doctor’s consultation access request.'
+                              'Access Denied',
+                              'You denied the doctor\'s consultation access request.'
                             );
                           }}
                         >
@@ -508,6 +507,108 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
               </>
             )}
           </Card>
+
+          {/* Video Call */}
+          {appointment.type === 'online' && !isCancelled && (
+            <Card style={styles.card}>
+              <View style={styles.titleRow}>
+                <Icon name="video" size={18} color={colors.primary[500]} />
+                <Text style={styles.title}>Video Call</Text>
+              </View>
+
+              {isDoctor && isUpcoming && (
+                <>
+                  {(!appointment.callStatus || appointment.callStatus === CALL_STATUS.IDLE) && (
+                    <Button
+                      variant="primary"
+                      onPress={async () => {
+                        try {
+                          const res = await appointmentAPI.startCall(appointment.id);
+                          if (res.success) {
+                            setAppointment(res.appointment);
+                            navigation.navigate('VideoCall', {
+                              appointmentId: appointment.id,
+                              roomId: res.appointment.videoCallRoomId,
+                              isCaller: true,
+                              otherPartyName: appointment.patient?.name || 'Patient',
+                            });
+                          }
+                        } catch (err) {
+                          Alert.alert('Error', 'Failed to start call');
+                        }
+                      }}
+                    >
+                      Start Video Call
+                    </Button>
+                  )}
+
+                  {(appointment.callStatus === CALL_STATUS.RINGING || appointment.callStatus === CALL_STATUS.IN_PROGRESS) && (
+                    <>
+                      <Text style={styles.accessMuted}>
+                        {appointment.callStatus === CALL_STATUS.RINGING ? 'Waiting for patient...' : 'Call in progress'}
+                      </Text>
+                      <Button
+                        variant="primary"
+                        onPress={() => {
+                          navigation.navigate('VideoCall', {
+                            appointmentId: appointment.id,
+                            roomId: appointment.videoCallRoomId,
+                            isCaller: true,
+                            otherPartyName: appointment.patient?.name || 'Patient',
+                          });
+                        }}
+                      >
+                        Rejoin Call
+                      </Button>
+                    </>
+                  )}
+                </>
+              )}
+
+              {isPatient && isUpcoming && (
+                <>
+                  {(!appointment.callStatus || appointment.callStatus === CALL_STATUS.IDLE) && (
+                    <Text style={styles.accessMuted}>Doctor will start the call when ready</Text>
+                  )}
+
+                  {(appointment.callStatus === CALL_STATUS.RINGING || appointment.callStatus === CALL_STATUS.IN_PROGRESS) && (
+                    <Button
+                      variant="success"
+                      onPress={async () => {
+                        try {
+                          const res = await appointmentAPI.joinCall(appointment.id);
+                          if (res.success) {
+                            navigation.navigate('VideoCall', {
+                              appointmentId: appointment.id,
+                              roomId: res.videoCallRoomId,
+                              isCaller: false,
+                              otherPartyName: appointment.doctor?.name || 'Doctor',
+                            });
+                          }
+                        } catch (err) {
+                          Alert.alert('Error', 'Failed to join call');
+                        }
+                      }}
+                    >
+                      Join Video Call
+                    </Button>
+                  )}
+                </>
+              )}
+
+              {appointment.callStatus === CALL_STATUS.ENDED && (
+                <View style={styles.accessRow}>
+                  <Icon name="check" size={14} color={colors.success[600]} />
+                  <Text style={styles.accessGranted}>
+                    Call completed
+                    {appointment.callStartedAt && appointment.callEndedAt && (
+                      ` (${Math.round((new Date(appointment.callEndedAt) - new Date(appointment.callStartedAt)) / 60000)} min)`
+                    )}
+                  </Text>
+                </View>
+              )}
+            </Card>
+          )}
 
           {/* Doctor Actions */}
           {isDoctor && !isCancelled && !isCompleted && (
@@ -620,6 +721,16 @@ const styles = StyleSheet.create({
 
   accessGranted: {
     color: colors.success[600],
+    fontSize: typography.fontSize.sm,
+  },
+
+  accessPending: {
+    color: colors.warning[600],
+    fontSize: typography.fontSize.sm,
+  },
+
+  accessDenied: {
+    color: colors.danger[500],
     fontSize: typography.fontSize.sm,
   },
 

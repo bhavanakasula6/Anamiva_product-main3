@@ -16,6 +16,7 @@ import {
   notificationAPI,
 } from '../services/api';
 import { useAuth } from './AuthContext';
+import socketService from '../services/socketService';
 
 const PatientContext = createContext(null);
 
@@ -34,17 +35,50 @@ export const PatientProvider = ({ children }) => {
   const [requests, setRequests] = useState([]);
 
   useEffect(() => {
-    if (user && isPatient()) {
+    if (user && user.role === 'patient') {
       loadPatientData();
     }
-  }, [user, isPatient]);
+  }, [user?.id, user?._id, user?.role]);
+
+  // Listen for real-time appointment status updates via socket
+  useEffect(() => {
+    if (user && user.role === 'patient') {
+      console.log('[PatientContext] Setting up socket listeners for appointment updates');
+
+      socketService.onAppointmentUpdated((data) => {
+        console.log('[PatientContext] Received appointment-updated event:', data);
+        loadAppointments();
+        loadNotifications();
+      });
+
+      // Listen for consultation access requests from doctors
+      const socket = socketService.getSocket();
+      if (socket) {
+        socket.on('consultation-access-requested', (data) => {
+          console.log('[PatientContext] Doctor requested consultation access:', data);
+          loadRequests();
+          loadNotifications();
+        });
+      }
+
+      return () => {
+        socketService.offAppointmentUpdated();
+        if (socket) {
+          socket.off('consultation-access-requested');
+        }
+      };
+    }
+  }, [user?.id, user?._id, user?.role]);
 
 
   const loadPatientData = async () => {
     try {
       setLoading(true);
+      // Load appointments first so dashboard appears quickly
+      await loadAppointments();
+      setLoading(false);
+      // Load remaining data in background
       await Promise.all([
-        loadAppointments(),
         loadMedicalRecords(),
         loadActiveMedications(),
         loadFavorites(),
@@ -305,7 +339,7 @@ export const PatientProvider = ({ children }) => {
 
   const updateMedicationReminder = async (medicationId, reminderData) => {
     try {
-      const response = await medicationAPI.updateMedicationReminder(medicationId, reminderData);
+      const response = await medicationAPI.updateMedication(medicationId, reminderData);
       if (response.success) {
         setActiveMedications(prev =>
           prev.map(med => med.id === medicationId ? response.medication : med)
@@ -426,7 +460,7 @@ export const PatientProvider = ({ children }) => {
       setAccessStatus(access);
       if (access.status === ACCESS_STATUS.GRANTED) {
         const consent = await consentAPI.getConsents();
-        const match = consent.consents.find(
+        const match = consent.consents?.find(
           c =>
             c.patientId === apt.patientId &&
             c.doctorId === apt.doctorId &&
@@ -492,7 +526,7 @@ export const PatientProvider = ({ children }) => {
 
   const loadRequests = async () => {
     if (!user?.id) return;
-    const res = await accessRequestAPI.getPatientRequests(user.id);
+    const res = await accessRequestAPI.getPendingRequests();
     if (res.success) {
       setRequests(res.requests || []);
     }

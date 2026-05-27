@@ -3,7 +3,7 @@
  * Phone number entry for authentication
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,8 +27,27 @@ const LoginScreen = ({ navigation }) => {
   const [countryCode] = useState('+91');
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+  const [cooldown, setCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setCooldown(prev => {
+          if (prev <= 1) {
+            clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => clearInterval(cooldownRef.current);
+  }, [cooldown]);
 
   const handleSendOTP = async () => {
+    if (loading) return; // Prevent double-tap
+
     if (!validatePhone(phone)) {
       setErrors({ phone: 'Enter a valid 10-digit phone number' });
       return;
@@ -42,6 +61,7 @@ const LoginScreen = ({ navigation }) => {
       const response = await sendOTP(fullPhone);
 
       if (response?.success) {
+        setCooldown(30);
         navigation.navigate('OTPVerification', { phone: fullPhone });
       } else {
         Alert.alert('Error', response?.message || 'Failed to send OTP');
@@ -112,11 +132,11 @@ const LoginScreen = ({ navigation }) => {
                 fullWidth
                 size="md"
                 loading={loading}
-                disabled={phone.length !== 10}
+                disabled={phone.length !== 10 || cooldown > 0}
                 onPress={handleSendOTP}
                 style={styles.button}
               >
-                Send OTP
+                {cooldown > 0 ? `Resend in ${cooldown}s` : 'Send OTP'}
               </Button>
 
               <Text style={styles.helperText}>

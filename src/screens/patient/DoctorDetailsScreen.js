@@ -99,7 +99,7 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
             name={doctor.userId?.name || doctor.fullName}
           />
 
-          {doctor.availability?.isOnline && (
+          {(doctor.availability?.online || doctor.availability?.isOnline) && (
             <View style={styles.onlineBadge}>
               <View style={styles.onlineDot} />
             </View>
@@ -108,7 +108,11 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
 
         {/* Doctor Info */}
         <View style={styles.infoSection}>
-          <Text style={styles.doctorName}>{doctor.userId?.name || doctor.fullName}</Text>
+          <Text style={styles.doctorName}>
+            {doctor.userId?.fullName || doctor.userId?.name ||
+             (doctor.userId?.firstName ? `${doctor.userId.firstName} ${doctor.userId.lastName || ''}`.trim() : null) ||
+             doctor.fullName || 'Doctor'}
+          </Text>
           <Text style={styles.specialization}>
             {doctor.speciality || doctor.specialization}
           </Text>
@@ -154,7 +158,7 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
           <Text style={styles.sectionTitle}>About</Text>
           <Text style={styles.bioText}>
             {doctor.bio ||
-              `Experienced ${doctor.specialization} with ${doctor.experience} years of practice.`}
+              `Experienced ${doctor.speciality || doctor.specialization || 'specialist'} with ${doctor.experience || 0} years of practice.`}
           </Text>
         </Card>
 
@@ -165,20 +169,20 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
           <View style={styles.row}>
             <Icon name="award" size={16} color={colors.primary[500]} />
             <Text style={styles.rowText}>
-              {doctor.qualifications}
+              {doctor.degree || doctor.qualifications || '-'}
             </Text>
           </View>
 
           <View style={styles.row}>
             <Icon name="file-text" size={16} color={colors.primary[500]} />
             <Text style={styles.rowText}>
-              Reg. No: {doctor.registrationNumber}
+              Reg. No: {doctor.registrationNo || doctor.registrationNumber || '-'}
             </Text>
           </View>
         </Card>
 
         {/* Clinic Address */}
-        {doctor.address && (
+        {(doctor.clinicInfo || doctor.userId?.address) && (
           <Card style={styles.section}>
             <Text style={styles.sectionTitle}>Clinic Address</Text>
 
@@ -186,10 +190,13 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
               <Icon name="map-pin" size={16} color={colors.primary[500]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.clinicName}>
-                  {doctor.address?.clinic || 'Clinic'}
+                  {doctor.clinicInfo?.name || doctor.userId?.address?.clinic || 'Clinic'}
                 </Text>
                 <Text style={styles.addressText}>
-                  {doctor.address?.street}, {doctor.address?.city}
+                  {[
+                    doctor.clinicInfo?.address || doctor.userId?.address?.street,
+                    doctor.userId?.address?.city
+                  ].filter(Boolean).join(', ') || '-'}
                 </Text>
               </View>
             </View>

@@ -33,6 +33,7 @@ import {
   RecordDetailsScreen,
   AppointmentDetailsScreen,
 } from '../screens/shared';
+import VideoCallScreen from '../screens/shared/VideoCallScreen';
 
 import Icon from '../components/Icon';
 import { colors } from '../styles/theme';
@@ -51,6 +52,7 @@ const HomeStack = () => (
     <Stack.Screen name="UploadRecord" component={UploadRecordScreen} />
     <Stack.Screen name="BookAppointment" component={BookAppointmentScreen} />
     <Stack.Screen name="AppointmentDetails" component={AppointmentDetailsScreen} />
+    <Stack.Screen name="VideoCall" component={VideoCallScreen} />
     <Stack.Screen name="EmergencyRequest" component={EmergencyRequestScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
@@ -67,6 +69,7 @@ const AppointmentsStack = () => (
     <Stack.Screen name="DoctorSearch" component={DoctorSearchScreen} />
     <Stack.Screen name="BookAppointment" component={BookAppointmentScreen} />
     <Stack.Screen name="AppointmentDetails" component={AppointmentDetailsScreen} />
+    <Stack.Screen name="VideoCall" component={VideoCallScreen} />
   </Stack.Navigator>
 );
 
@@ -117,9 +120,9 @@ const PatientNavigator = () => {
           backgroundColor: colors.white,
           borderTopWidth: 1,
           borderTopColor: colors.gray[200],
-          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 5,
+          paddingBottom: Math.max(insets.bottom, 5),
           paddingTop: 6,
-          height: Platform.OS === 'ios' ? 60 + insets.bottom : 60,
+          height: 60 + Math.max(insets.bottom, 5),
         },
         tabBarLabelStyle: {
           fontSize: 12,

@@ -17,9 +17,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, typography, spacing } from '../../styles/theme';
-import { Button, Input } from '../../components/common';
+import { Button, Input, DropdownPicker } from '../../components/common';
 import { validateEmail, validateRequired } from '../../utils/validation';
-import { USER_ROLES, SPECIALIZATIONS, GENDERS } from '../../data/constants';
+import { USER_ROLES, SPECIALIZATIONS, GENDERS, INDIAN_STATES, CITIES_BY_STATE } from '../../data/constants';
 import Icon from '../../components/Icon';
 
 const DoctorProfileSetupScreen = ({ navigation, route }) => {
@@ -38,6 +38,7 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
     consultationFee: '',
     clinicName: '',
     clinicAddress: '',
+    state: '',
     city: '',
     bio: '',
   });
@@ -91,7 +92,7 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
         role: USER_ROLES.DOCTOR,
         fullName: `Dr. ${formData.firstName} ${formData.lastName}`,
         phoneVerified: true,
-        avatar: `https://i.pravatar.cc/150?u=${phone}`,
+        avatar: '',
         experience: parseInt(formData.experience),
         consultationFee: parseInt(formData.consultationFee),
         rating: 4.5,
@@ -100,10 +101,12 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
           clinic: formData.clinicName,
           street: formData.clinicAddress,
           city: formData.city,
-          state: 'Maharashtra',
-          pincode: '400001',
+          state: formData.state,
+          pincode: '',
           country: 'India',
         },
+        clinicName: formData.clinicName,
+        clinicAddress: formData.clinicAddress,
         location: {
           latitude: 19.0760 + (Math.random() - 0.5) * 0.1,
           longitude: 72.8777 + (Math.random() - 0.5) * 0.1,
@@ -129,9 +132,7 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
 
       const response = await completeProfile(profileData);
 
-      if (response.success) {
-        navigation.replace('Main');
-      } else {
+      if (!response.success) {
         Alert.alert('Error', response.message || 'Failed to create profile');
       }
     } catch (error) {
@@ -333,12 +334,27 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
                 placeholder="Enter clinic address"
               />
 
-              <Input
-                label="City"
+              {/* State Selection */}
+              <DropdownPicker
+                label="State"
+                placeholder="Select state"
+                value={formData.state}
+                options={INDIAN_STATES}
+                onSelect={(st) => {
+                  updateField('state', st);
+                  updateField('city', '');
+                }}
+              />
+
+              {/* City Selection */}
+              <DropdownPicker
+                label="City *"
+                placeholder={formData.state ? 'Select city' : 'Select a state first'}
                 value={formData.city}
-                onChangeText={(value) => updateField('city', value)}
-                placeholder="Enter city"
-                autoCapitalize="words"
+                options={formData.state ? (CITIES_BY_STATE[formData.state] || []) : []}
+                onSelect={(ct) => updateField('city', ct)}
+                disabled={!formData.state}
+                error={errors.city}
               />
 
               {/* Submit Button */}
@@ -471,6 +487,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.regular,
     color: colors.danger[500],
     marginTop: spacing.xs,
+  },
+  accessMuted: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.regular,
+    color: colors.gray[500],
+    paddingVertical: spacing.sm,
   },
   submitButton: {
     marginTop: spacing.xl,

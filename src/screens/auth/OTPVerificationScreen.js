@@ -77,10 +77,10 @@ const OTPVerificationScreen = ({ navigation, route }) => {
 
       if (res?.success) {
         if (res.isNewUser) {
-          navigation.navigate('RoleSelection', { phone });
-        } else {
-          navigation.replace('Main');
+          navigation.replace('RoleSelection', { phone });
         }
+        // For existing users: AuthContext.login() sets isAuthenticated=true,
+        // RootNavigator auto-switches to Main. No manual navigation needed.
       } else {
         throw new Error(res?.message || 'Invalid OTP');
       }
@@ -151,11 +151,6 @@ const OTPVerificationScreen = ({ navigation, route }) => {
               />
             ))}
           </View>
-
-          {/* TEST OTP (DEV ONLY) */}
-          <Text style={styles.helper}>
-            Test OTP: <Text style={styles.helperBold}>123456</Text>
-          </Text>
 
           {/* VERIFY BUTTON */}
           <Button

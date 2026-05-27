@@ -18,10 +18,131 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, typography, spacing } from '../../styles/theme';
-import { Button, Input } from '../../components/common';
+import { Button, Input, DropdownPicker } from '../../components/common';
 import { validateEmail, validateRequired } from '../../utils/validation';
-import { USER_ROLES, BLOOD_GROUPS, GENDERS } from '../../data/constants';
+import { USER_ROLES, BLOOD_GROUPS, GENDERS, INDIAN_STATES, CITIES_BY_STATE } from '../../data/constants';
 import Icon from '../../components/Icon';
+
+// Coordinates for major cities (used for geocoding during profile setup)
+const CITY_COORDINATES = {
+  'Chennai': { latitude: 13.0827, longitude: 80.2707 },
+  'Coimbatore': { latitude: 11.0168, longitude: 76.9558 },
+  'Madurai': { latitude: 9.9252, longitude: 78.1198 },
+  'Trichy': { latitude: 10.7905, longitude: 78.7047 },
+  'Salem': { latitude: 11.6643, longitude: 78.1460 },
+  'Erode': { latitude: 11.3410, longitude: 77.7172 },
+  'Tirunelveli': { latitude: 8.7139, longitude: 77.7567 },
+  'Vellore': { latitude: 12.9165, longitude: 79.1325 },
+  'Bangalore': { latitude: 12.9716, longitude: 77.5946 },
+  'Mysore': { latitude: 12.2958, longitude: 76.6394 },
+  'Mangalore': { latitude: 12.9141, longitude: 74.8560 },
+  'Kochi': { latitude: 9.9312, longitude: 76.2673 },
+  'Thiruvananthapuram': { latitude: 8.5241, longitude: 76.9366 },
+  'Hyderabad': { latitude: 17.3850, longitude: 78.4867 },
+  'Visakhapatnam': { latitude: 17.6868, longitude: 83.2185 },
+  'Mumbai': { latitude: 19.0760, longitude: 72.8777 },
+  'Pune': { latitude: 18.5204, longitude: 73.8567 },
+  'New Delhi': { latitude: 28.7041, longitude: 77.1025 },
+  'Ahmedabad': { latitude: 23.0225, longitude: 72.5714 },
+  'Jaipur': { latitude: 26.9124, longitude: 75.7873 },
+  'Lucknow': { latitude: 26.8467, longitude: 80.9462 },
+  'Kolkata': { latitude: 22.5726, longitude: 88.3639 },
+  'Bhopal': { latitude: 23.2599, longitude: 77.4126 },
+  'Patna': { latitude: 25.6093, longitude: 85.1376 },
+  'Chandigarh': { latitude: 30.7333, longitude: 76.7794 },
+  'Gurugram': { latitude: 28.4595, longitude: 77.0266 },
+  'Noida': { latitude: 28.5355, longitude: 77.3910 },
+  'Indore': { latitude: 22.7196, longitude: 75.8577 },
+  'Nagpur': { latitude: 21.1458, longitude: 79.0882 },
+  'Guwahati': { latitude: 26.1445, longitude: 91.7362 },
+  'Panaji': { latitude: 15.4909, longitude: 73.8278 },
+  'Ranchi': { latitude: 23.3441, longitude: 85.3096 },
+  'Bhubaneswar': { latitude: 20.2961, longitude: 85.8245 },
+  'Raipur': { latitude: 21.2514, longitude: 81.6296 },
+  'Dindigul': { latitude: 10.3673, longitude: 77.9803 },
+  'Thanjavur': { latitude: 10.7870, longitude: 79.1378 },
+  'Tiruppur': { latitude: 11.1085, longitude: 77.3411 },
+  'Nagercoil': { latitude: 8.1833, longitude: 77.4119 },
+  'Thoothukudi': { latitude: 8.7642, longitude: 78.1348 },
+  // Additional state capitals and major cities
+  'Shimla': { latitude: 31.1048, longitude: 77.1734 },
+  'Dehradun': { latitude: 30.3165, longitude: 78.0322 },
+  'Srinagar': { latitude: 34.0837, longitude: 74.7973 },
+  'Jammu': { latitude: 32.7266, longitude: 74.8570 },
+  'Leh': { latitude: 34.1526, longitude: 77.5771 },
+  'Itanagar': { latitude: 27.0844, longitude: 93.6053 },
+  'Shillong': { latitude: 25.5788, longitude: 91.8933 },
+  'Aizawl': { latitude: 23.7271, longitude: 92.7176 },
+  'Kohima': { latitude: 25.6751, longitude: 94.1086 },
+  'Imphal': { latitude: 24.8170, longitude: 93.9368 },
+  'Agartala': { latitude: 23.8315, longitude: 91.2868 },
+  'Gangtok': { latitude: 27.3389, longitude: 88.6065 },
+  'Dibrugarh': { latitude: 27.4728, longitude: 94.9120 },
+  'Silchar': { latitude: 24.8333, longitude: 92.7789 },
+  'Jorhat': { latitude: 26.7509, longitude: 94.2037 },
+  'Puducherry': { latitude: 11.9416, longitude: 79.8083 },
+  'Port Blair': { latitude: 11.6234, longitude: 92.7265 },
+  'Haridwar': { latitude: 29.9457, longitude: 78.1642 },
+  'Amritsar': { latitude: 31.6340, longitude: 74.8723 },
+  'Surat': { latitude: 21.1702, longitude: 72.8311 },
+  'Vadodara': { latitude: 22.3072, longitude: 73.1812 },
+  'Rajkot': { latitude: 22.3039, longitude: 70.8022 },
+  'Varanasi': { latitude: 25.3176, longitude: 82.9739 },
+  'Agra': { latitude: 27.1767, longitude: 78.0081 },
+  'Jamshedpur': { latitude: 22.8046, longitude: 86.2029 },
+  'Dhanbad': { latitude: 23.7957, longitude: 86.4304 },
+};
+
+// State capital coordinates (fallback when district not in CITY_COORDINATES)
+const STATE_CAPITAL_COORDINATES = {
+  'Andaman and Nicobar Islands': { latitude: 11.6234, longitude: 92.7265 },
+  'Andhra Pradesh': { latitude: 16.5062, longitude: 80.6480 },
+  'Arunachal Pradesh': { latitude: 27.0844, longitude: 93.6053 },
+  'Assam': { latitude: 26.1445, longitude: 91.7362 },
+  'Bihar': { latitude: 25.6093, longitude: 85.1376 },
+  'Chandigarh': { latitude: 30.7333, longitude: 76.7794 },
+  'Chhattisgarh': { latitude: 21.2514, longitude: 81.6296 },
+  'Dadra and Nagar Haveli and Daman and Diu': { latitude: 20.3974, longitude: 72.8328 },
+  'Delhi': { latitude: 28.7041, longitude: 77.1025 },
+  'Goa': { latitude: 15.4909, longitude: 73.8278 },
+  'Gujarat': { latitude: 23.2156, longitude: 72.6369 },
+  'Haryana': { latitude: 30.7333, longitude: 76.7794 },
+  'Himachal Pradesh': { latitude: 31.1048, longitude: 77.1734 },
+  'Jammu and Kashmir': { latitude: 34.0837, longitude: 74.7973 },
+  'Jharkhand': { latitude: 23.3441, longitude: 85.3096 },
+  'Karnataka': { latitude: 12.9716, longitude: 77.5946 },
+  'Kerala': { latitude: 8.5241, longitude: 76.9366 },
+  'Ladakh': { latitude: 34.1526, longitude: 77.5771 },
+  'Lakshadweep': { latitude: 10.5667, longitude: 72.6417 },
+  'Madhya Pradesh': { latitude: 23.2599, longitude: 77.4126 },
+  'Maharashtra': { latitude: 19.0760, longitude: 72.8777 },
+  'Manipur': { latitude: 24.8170, longitude: 93.9368 },
+  'Meghalaya': { latitude: 25.5788, longitude: 91.8933 },
+  'Mizoram': { latitude: 23.7271, longitude: 92.7176 },
+  'Nagaland': { latitude: 25.6751, longitude: 94.1086 },
+  'Odisha': { latitude: 20.2961, longitude: 85.8245 },
+  'Puducherry': { latitude: 11.9416, longitude: 79.8083 },
+  'Punjab': { latitude: 30.7333, longitude: 76.7794 },
+  'Rajasthan': { latitude: 26.9124, longitude: 75.7873 },
+  'Sikkim': { latitude: 27.3389, longitude: 88.6065 },
+  'Tamil Nadu': { latitude: 13.0827, longitude: 80.2707 },
+  'Telangana': { latitude: 17.3850, longitude: 78.4867 },
+  'Tripura': { latitude: 23.8315, longitude: 91.2868 },
+  'Uttar Pradesh': { latitude: 26.8467, longitude: 80.9462 },
+  'Uttarakhand': { latitude: 30.3165, longitude: 78.0322 },
+  'West Bengal': { latitude: 22.5726, longitude: 88.3639 },
+};
+
+const getCityLocation = (city, state) => {
+  if (city && CITY_COORDINATES[city]) {
+    return CITY_COORDINATES[city];
+  }
+  if (state && STATE_CAPITAL_COORDINATES[state]) {
+    return STATE_CAPITAL_COORDINATES[state];
+  }
+  // Default to New Delhi (central India)
+  return { latitude: 28.7041, longitude: 77.1025 };
+};
 
 const PatientProfileSetupScreen = ({ navigation, route }) => {
   const { phone, role } = route.params;
@@ -35,6 +156,7 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
     gender: '',
     bloodGroup: '',
     address: '',
+    state: '',
     city: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
@@ -96,18 +218,15 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
         role: USER_ROLES.PATIENT,
         fullName: `${formData.firstName} ${formData.lastName}`,
         phoneVerified: true,
-        avatar: `https://i.pravatar.cc/150?u=${phone}`,
+        avatar: '',
         address: {
           street: formData.address,
           city: formData.city,
-          state: 'Maharashtra',
-          pincode: '400001',
+          state: formData.state || '',
+          pincode: formData.pincode || '',
           country: 'India',
         },
-        location: {
-          latitude: 19.0760 + (Math.random() - 0.5) * 0.1,
-          longitude: 72.8777 + (Math.random() - 0.5) * 0.1,
-        },
+        location: getCityLocation(formData.city, formData.state),
         emergencyContact: {
           name: formData.emergencyContactName,
           phone: formData.emergencyContactPhone,
@@ -123,9 +242,7 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
 
       const response = await completeProfile(profileData);
 
-      if (response.success) {
-        navigation.replace('Main');
-      } else {
+      if (!response.success) {
         Alert.alert('Error', response.message || 'Failed to create profile');
       }
     } catch (error) {
@@ -290,12 +407,27 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
                 placeholder="Enter street address"
               />
 
-              <Input
-                label="City"
+              {/* State Selection */}
+              <DropdownPicker
+                label="State"
+                placeholder="Select state"
+                value={formData.state}
+                options={INDIAN_STATES}
+                onSelect={(st) => {
+                  updateField('state', st);
+                  updateField('city', '');
+                }}
+              />
+
+              {/* City Selection */}
+              <DropdownPicker
+                label="City *"
+                placeholder={formData.state ? 'Select city' : 'Select a state first'}
                 value={formData.city}
-                onChangeText={(value) => updateField('city', value)}
-                placeholder="Enter city"
-                autoCapitalize="words"
+                options={formData.state ? (CITIES_BY_STATE[formData.state] || []) : []}
+                onSelect={(ct) => updateField('city', ct)}
+                disabled={!formData.state}
+                error={errors.city}
               />
 
               {/* Emergency Contact */}
@@ -330,14 +462,44 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
           </View>
         </ScrollView>
 
-        {showDatePicker && (
+        {showDatePicker && Platform.OS === 'android' && (
           <DateTimePicker
             value={new Date()}
             mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            display="default"
             maximumDate={new Date()}
             onChange={onDateChange}
           />
+        )}
+
+        {showDatePicker && Platform.OS === 'ios' && (
+          <View style={styles.iosDatePickerOverlay}>
+            <View style={styles.iosDatePickerContainer}>
+              <View style={styles.iosDatePickerHeader}>
+                <TouchableOpacity onPress={() => setShowDatePicker(false)}>
+                  <Text style={styles.iosDatePickerCancel}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => {
+                  // The picker's current value is already tracked via onChange
+                  setShowDatePicker(false);
+                }}>
+                  <Text style={styles.iosDatePickerDone}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={formData.dateOfBirth ? new Date(formData.dateOfBirth.split('/').reverse().join('-')) : new Date()}
+                mode="date"
+                display="spinner"
+                maximumDate={new Date()}
+                onChange={(event, selectedDate) => {
+                  if (selectedDate) {
+                    const formattedDate = selectedDate.toLocaleDateString('en-GB');
+                    updateField('dateOfBirth', formattedDate);
+                  }
+                }}
+              />
+            </View>
+          </View>
         )}
 
       </KeyboardAvoidingView>
@@ -475,8 +637,60 @@ const styles = StyleSheet.create({
     color: colors.danger[500],
     marginTop: spacing.xs,
   },
+  optionChip: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: 20,
+    marginRight: spacing.sm,
+  },
+  optionChipSelected: {
+    borderColor: colors.primary[500],
+    backgroundColor: colors.primary[50],
+  },
+  optionChipText: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.gray[700],
+  },
+  optionChipTextSelected: {
+    color: colors.primary[500],
+  },
   submitButton: {
     marginTop: spacing.xl,
+  },
+  iosDatePickerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    top: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  iosDatePickerContainer: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    paddingBottom: spacing.xl,
+  },
+  iosDatePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  iosDatePickerCancel: {
+    fontSize: typography.fontSize.base,
+    color: colors.gray[500],
+  },
+  iosDatePickerDone: {
+    fontSize: typography.fontSize.base,
+    fontFamily: typography.fontFamily.semiBold,
+    color: colors.primary[500],
   },
 });
 

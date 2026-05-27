@@ -7,8 +7,14 @@ const medicationSchema = new mongoose.Schema(
     name: { type: String, required: true },
     dosage: { type: String, required: true },
     frequency: String,
+    duration: String,
     startDate: Date,
     endDate: Date,
+    active: { type: Boolean, default: true },
+    reminder: {
+      enabled: { type: Boolean, default: false },
+      times: [String], // e.g. ["08:00", "20:00"]
+    },
   },
   { timestamps: true }
 );

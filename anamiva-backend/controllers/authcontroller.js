@@ -5,23 +5,31 @@ const { sendOTP, verifyOTP } = require("../config/otp");
 const { JWT_SECRET, JWT_EXPIRES_IN } = require("../config/env");
 
 /* =====================
-   SEND OTP
+   SEND OTP (rate limited: max 3/hr per phone)
 ===================== */
 exports.sendOtp = async (req, res) => {
-  const { phone } = req.body;
+  try {
+    const { phone } = req.body;
 
-  if (!phone)
-    return res.status(400).json({
-      success: false,
-      message: "Phone required"
+    if (!phone)
+      return res.status(400).json({
+        success: false,
+        message: "Phone required"
+      });
+
+    await sendOTP(phone);
+
+    res.json({
+      success: true,
+      message: `OTP sent successfully to ${phone}`
     });
-
-  await sendOTP(phone);
-
-  res.json({
-    success: true,
-    message: `OTP sent successfully to ${phone}`
-  });
+  } catch (err) {
+    const status = err.statusCode || 500;
+    res.status(status).json({
+      success: false,
+      message: err.message
+    });
+  }
 };
 
 /* =====================
@@ -45,12 +53,23 @@ exports.verifyOtp = async (req, res) => {
 
   let user = await User.findOne({ phoneNumber: phone });
 
+  // Mark phone as verified after successful OTP
+  // Use updateOne to avoid full document validation (prevents failures from
+  // legacy data with invalid enum values like a misspelled gender)
+  if (user) {
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { phoneVerified: true } }
+    );
+    user.phoneVerified = true;
+  }
+
   // EXISTING USER
   if (user && user.isProfileCompleted) {
     const token = jwt.sign(
-      { id: user._id, role: user.role },
+      { id: user._id, role: user.role, phoneVerified: true },
       JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      { expiresIn: "30d" }
     );
 
     // If user is a doctor, merge doctor profile data
@@ -70,6 +89,7 @@ exports.verifyOtp = async (req, res) => {
           clinicInfo: doctorProfile.clinicInfo,
           availability: doctorProfile.availability,
           languages: doctorProfile.languages,
+          consultingHours: doctorProfile.consultingHours,
           doctorProfileId: doctorProfile._id,
         };
       }
@@ -111,7 +131,7 @@ exports.selectRole = async (req, res) => {
   await User.findOneAndUpdate(
     { phoneNumber: phone },
     { role },
-    { upsert: true }
+    { upsert: true, new: true }
   );
 
   res.json({
@@ -131,20 +151,121 @@ exports.completeProfile = async (req, res) => {
     { phoneNumber: phone },
     {
       ...req.body,
-      isProfileCompleted: true
+      name: req.body.fullName || req.body.name || `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim(),
+      isProfileCompleted: true,
+      phoneVerified: true
     },
     { new: true }
   );
 
+  // Auto-create Doctor profile if role is doctor and none exists
+  let doctorProfile = null;
+  if (user.role === 'doctor') {
+    const existingDoctor = await Doctor.findOne({ userId: user._id });
+    if (!existingDoctor) {
+      // Geocode city to coordinates (approximate Indian city centers)
+      const cityCoords = {
+        'chennai': [80.2707, 13.0827],
+        'mumbai': [72.8777, 19.0760],
+        'delhi': [77.1025, 28.7041],
+        'bangalore': [77.5946, 12.9716],
+        'bengaluru': [77.5946, 12.9716],
+        'hyderabad': [78.4867, 17.3850],
+        'kolkata': [88.3639, 22.5726],
+        'pune': [73.8567, 18.5204],
+        'trichy': [78.7047, 10.7905],
+        'tiruchirappalli': [78.7047, 10.7905],
+        'coimbatore': [76.9558, 11.0168],
+        'madurai': [78.1198, 9.9252],
+        'salem': [78.1460, 11.6643],
+        'erode': [77.7172, 11.3410],
+        'tirunelveli': [77.7567, 8.7139],
+        'kochi': [76.2673, 9.9312],
+        'ahmedabad': [72.5714, 23.0225],
+        'jaipur': [75.7873, 26.9124],
+        'lucknow': [80.9462, 26.8467],
+        'chandigarh': [76.7794, 30.7333],
+        'indore': [75.8577, 22.7196],
+        'nagpur': [79.0882, 21.1458],
+        'visakhapatnam': [83.2185, 17.6868],
+        'bhopal': [77.4126, 23.2599],
+        'patna': [85.1376, 25.6093],
+      };
+
+      const city = (req.body.city || req.body.address?.city || '').toLowerCase().trim();
+      const lat = req.body.location?.latitude;
+      const lng = req.body.location?.longitude;
+      let coordinates = [80.2707, 13.0827]; // default Chennai
+
+      if (lat && lng) {
+        coordinates = [Number(lng), Number(lat)];
+      } else if (city && cityCoords[city]) {
+        coordinates = cityCoords[city];
+      }
+
+      // Map availability from frontend format to backend schema
+      const avail = req.body.availability || {};
+      const availability = {
+        online: avail.isOnline !== undefined ? avail.isOnline : (avail.online !== undefined ? avail.online : true),
+        clinicOpen: avail.clinicOpen || false,
+        acceptEmergency: avail.acceptingEmergency || avail.acceptEmergency || false,
+      };
+
+      const doctorData = {
+        userId: user._id,
+        speciality: req.body.specialization || req.body.speciality || 'General Medicine',
+        degree: req.body.qualifications || req.body.degree || 'MBBS',
+        registrationNo: req.body.registrationNumber || req.body.registrationNo || 'PENDING',
+        experience: parseInt(req.body.experience) || 0,
+        consultationFee: parseInt(req.body.consultationFee) || 0,
+        availability,
+        languages: req.body.languages || ['English'],
+        clinicInfo: {
+          name: req.body.clinicName || req.body.address?.clinic || '',
+          address: req.body.clinicAddress || req.body.address?.street || '',
+        },
+        location: {
+          type: 'Point',
+          coordinates,
+        }
+      };
+      const newDoctor = await Doctor.create(doctorData);
+      doctorProfile = newDoctor;
+      console.log(`Auto-created Doctor profile ${newDoctor._id} for user ${user._id} in city: ${city || 'default'}`);
+    } else {
+      doctorProfile = existingDoctor;
+    }
+  }
+
   const token = jwt.sign(
-    { id: user._id, role: user.role },
+    { id: user._id, role: user.role, phoneVerified: true },
     JWT_SECRET,
-    { expiresIn: JWT_EXPIRES_IN }
+    { expiresIn: "30d" }
   );
+
+  // Merge doctor profile fields into the response so frontend has them immediately
+  let responseUser = user.toObject ? user.toObject() : { ...user };
+  if (doctorProfile) {
+    responseUser = {
+      ...responseUser,
+      specialization: doctorProfile.speciality,
+      experience: doctorProfile.experience,
+      rating: doctorProfile.rating,
+      reviewCount: doctorProfile.reviewCount,
+      consultationFee: doctorProfile.consultationFee,
+      qualifications: doctorProfile.degree,
+      registrationNumber: doctorProfile.registrationNo,
+      clinicInfo: doctorProfile.clinicInfo,
+      availability: doctorProfile.availability,
+      languages: doctorProfile.languages,
+      consultingHours: doctorProfile.consultingHours,
+      doctorProfileId: doctorProfile._id,
+    };
+  }
 
   res.status(201).json({
     success: true,
-    user,
+    user: responseUser,
     token
   });
 };
@@ -174,6 +295,7 @@ exports.getMe = async (req, res) => {
         clinicInfo: doctorProfile.clinicInfo,
         availability: doctorProfile.availability,
         languages: doctorProfile.languages,
+        consultingHours: doctorProfile.consultingHours,
         // Keep doctor profile ID for reference
         doctorProfileId: doctorProfile._id,
       };
@@ -196,11 +318,106 @@ exports.logout = async (req, res) => {
    UPDATE PROFILE
 ===================== */
 exports.updateProfile = async (req, res) => {
-  const user = await User.findByIdAndUpdate(
-    req.user.id,
-    req.body,
-    { new: true }
-  );
+  try {
+    console.log('[updateProfile] userId:', req.user.id, 'role:', req.user.role);
+    console.log('[updateProfile] address:', JSON.stringify(req.body.address));
+    console.log('[updateProfile] specialization:', req.body.specialization, 'clinicName:', req.body.address?.clinic);
 
-  res.json({ success: true, user });
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      req.body,
+      { new: true }
+    );
+
+    console.log('[updateProfile] saved user.address:', JSON.stringify(user?.address));
+
+    // If doctor, also update the Doctor model with professional fields
+    if (user && user.role === 'doctor') {
+      const doctorProfile = await Doctor.findOne({ userId: user._id });
+      if (doctorProfile) {
+        const doctorUpdates = {};
+
+        if (req.body.specialization) doctorUpdates.speciality = req.body.specialization;
+        if (req.body.qualifications) doctorUpdates.degree = req.body.qualifications;
+        if (req.body.registrationNumber) doctorUpdates.registrationNo = req.body.registrationNumber;
+        if (req.body.experience !== undefined) doctorUpdates.experience = parseInt(req.body.experience) || 0;
+        if (req.body.consultationFee !== undefined) doctorUpdates.consultationFee = parseInt(req.body.consultationFee) || 0;
+        if (req.body.bio !== undefined) doctorUpdates.bio = req.body.bio;
+        if (req.body.consultingHours) {
+          doctorUpdates.consultingHours = {
+            start: parseInt(req.body.consultingHours.start) || 9,
+            end: parseInt(req.body.consultingHours.end) || 17,
+          };
+        }
+
+        // Update clinicInfo from address fields
+        if (req.body.address) {
+          doctorUpdates.clinicInfo = {
+            name: req.body.address.clinic || doctorProfile.clinicInfo?.name || '',
+            address: req.body.address.street || doctorProfile.clinicInfo?.address || '',
+          };
+        }
+
+        if (Object.keys(doctorUpdates).length > 0) {
+          await Doctor.findByIdAndUpdate(doctorProfile._id, doctorUpdates);
+          console.log(`Updated Doctor profile ${doctorProfile._id} with:`, Object.keys(doctorUpdates));
+        }
+
+        // Re-fetch and merge for response
+        const updatedDoctor = await Doctor.findById(doctorProfile._id);
+        const mergedUser = {
+          ...user.toObject(),
+          specialization: updatedDoctor.speciality,
+          experience: updatedDoctor.experience,
+          rating: updatedDoctor.rating,
+          reviewCount: updatedDoctor.reviewCount,
+          consultationFee: updatedDoctor.consultationFee,
+          qualifications: updatedDoctor.degree,
+          registrationNumber: updatedDoctor.registrationNo,
+          clinicInfo: updatedDoctor.clinicInfo,
+          availability: updatedDoctor.availability,
+          languages: updatedDoctor.languages,
+          consultingHours: updatedDoctor.consultingHours,
+          doctorProfileId: updatedDoctor._id,
+        };
+
+        return res.json({ success: true, user: mergedUser });
+      }
+    }
+
+    res.json({ success: true, user });
+  } catch (err) {
+    console.error('Update profile error:', err);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* =====================
+   UPLOAD AVATAR
+===================== */
+exports.uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No file uploaded' });
+    }
+
+    // Build the public URL for the uploaded file
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    const avatarUrl = `${baseUrl}/uploads/${req.file.filename}`;
+
+    // Update user's profilePicture and avatar fields
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { profilePicture: avatarUrl, avatar: avatarUrl },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      avatarUrl,
+      user,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 };

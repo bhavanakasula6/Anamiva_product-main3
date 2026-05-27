@@ -3,20 +3,30 @@
  * Main dashboard for doctors with modern UI
  */
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { Avatar, Badge, Card, IconButton, Loading } from '../../components/common';
 import Icon from '../../components/Icon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useDoctor } from '../../contexts/DoctorContext';
-import { APPOINTMENT_STATUS, APPOINTMENT_TYPES } from '../../data/constants';
+import { APPOINTMENT_STATUS, APPOINTMENT_TYPES, CALL_STATUS } from '../../data/constants';
+import { appointmentAPI } from '../../services/api';
 import theme from '../../styles/theme';
 const { colors, typography, spacing, borderRadius, shadows } = theme;
 
 const DoctorHomeScreen = ({ navigation }) => {
   const { user } = useAuth();
-  const { appointments, analytics, loading } = useDoctor();
+  const { appointments, analytics, activeEmergency, loadActiveEmergency, loadAppointments, loading } = useDoctor();
+
+  // Refresh data on screen focus (appointments + emergency)
+  useFocusEffect(
+    useCallback(() => {
+      loadActiveEmergency();
+      loadAppointments();
+    }, [])
+  );
   const APPOINTMENT_TYPE_LABELS = {
     online: 'Online',
     'in-person': 'In Person',
@@ -71,7 +81,7 @@ const DoctorHomeScreen = ({ navigation }) => {
             <Text style={styles.userName}>
               {user?.fullName || 'Doctor'}
             </Text>
-
+            <Text style={styles.specialization}>{user?.specialization || 'General Physician'}</Text>
           </View>
           <IconButton
             icon="bell"
@@ -88,7 +98,7 @@ const DoctorHomeScreen = ({ navigation }) => {
           <View style={styles.statsGrid}>
             <StatCard
               title="Appointments"
-              value={`₹${revenue.toLocaleString('en-IN')}`}
+              value={todayAppointments.length}
               icon="calendar"
               color={colors.primary[500]}
             />
@@ -106,6 +116,31 @@ const DoctorHomeScreen = ({ navigation }) => {
             />
           </View>
         </View>
+
+        {/* Active Emergency */}
+        {activeEmergency && (
+          <View style={styles.section}>
+            <Card
+              style={[styles.appointmentCard, { borderLeftWidth: 4, borderLeftColor: colors.danger[500], backgroundColor: colors.danger[50] }]}
+              onPress={() => navigation.navigate('EmergencyList')}
+            >
+              <View style={styles.appointmentHeader}>
+                <View style={[styles.actionIcon, { backgroundColor: colors.danger[100], width: 50, height: 50, borderRadius: 25 }]}>
+                  <Icon name="alert-triangle" size={24} color={colors.danger[500]} />
+                </View>
+                <View style={styles.appointmentInfo}>
+                  <Text style={styles.patientName}>
+                    {activeEmergency.patientId?.fullName || activeEmergency.patientId?.name || 'Patient'}
+                  </Text>
+                  <Text style={styles.appointmentTime}>
+                    {activeEmergency.description || 'Emergency request'}
+                  </Text>
+                  <Badge variant="danger" size="sm">{activeEmergency.status}</Badge>
+                </View>
+              </View>
+            </Card>
+          </View>
+        )}
 
         {/* Quick Actions */}
         <View style={styles.section}>
@@ -198,17 +233,36 @@ const DoctorHomeScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.joinCallContainer}>
                       {appointment.type === APPOINTMENT_TYPES.ONLINE &&
-                        appointment.status === APPOINTMENT_STATUS.UPCOMING &&
-                        appointment.videoCallLink && (
-                          <TouchableOpacity onPress={() =>
-                            navigation.navigate('VideoCall', {
-                              url: appointment.videoCallLink,
-                              appointmentId: appointment.id,
-                            })
-                          }>
+                        appointment.status === APPOINTMENT_STATUS.UPCOMING && (
+                          <TouchableOpacity onPress={async () => {
+                            if (!appointment.callStatus || appointment.callStatus === CALL_STATUS.IDLE) {
+                              try {
+                                const res = await appointmentAPI.startCall(appointment.id);
+                                if (res.success && res.appointment?.videoCallRoomId) {
+                                  navigation.navigate('VideoCall', {
+                                    appointmentId: appointment.id,
+                                    roomId: res.appointment.videoCallRoomId,
+                                    isCaller: true,
+                                    otherPartyName: appointment.patient?.name || 'Patient',
+                                  });
+                                }
+                              } catch (err) {
+                                console.error('Failed to start call:', err);
+                              }
+                            } else {
+                              navigation.navigate('VideoCall', {
+                                appointmentId: appointment.id,
+                                roomId: appointment.videoCallRoomId,
+                                isCaller: true,
+                                otherPartyName: appointment.patient?.name || 'Patient',
+                              });
+                            }
+                          }}>
                             <View style={styles.joinCallContainer}>
                               <Icon name="video" size={14} color={colors.primary[500]} style={{ marginRight: spacing.xs }} />
-                              <Text style={styles.joinCallText}>Join Call</Text>
+                              <Text style={styles.joinCallText}>
+                                {(!appointment.callStatus || appointment.callStatus === CALL_STATUS.IDLE) ? 'Start Call' : 'Rejoin Call'}
+                              </Text>
                             </View>
                           </TouchableOpacity>
                         )}
@@ -301,6 +355,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.bold,
     color: colors.gray[900],
     marginTop: spacing.xs,
+  },
+  specialization: {
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.primary[500],
+    marginTop: spacing.xs / 2,
   },
   notificationButton: {
     padding: spacing.sm,

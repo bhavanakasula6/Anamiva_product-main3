@@ -8,6 +8,15 @@ const appointmentSchema = new mongoose.Schema(
     time: { type: String, required: true },
     type: { type: String, enum: ['online', 'clinic'], default: 'online' },
     symptoms: String,
+    videoLink: String,
+    videoCallRoomId: String,
+    callStatus: {
+      type: String,
+      enum: ['idle', 'ringing', 'in_progress', 'ended'],
+      default: 'idle',
+    },
+    callStartedAt: Date,
+    callEndedAt: Date,
     status: {
       type: String,
       enum: ['pending', 'upcoming', 'completed', 'cancelled', 'no_show'],
