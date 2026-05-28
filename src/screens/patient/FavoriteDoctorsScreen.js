@@ -3,7 +3,7 @@
  * + Extended medical history access
  */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 
 import { usePatient } from '../../contexts/PatientContext';
 import { colors, spacing, typography } from '../../styles/theme';
@@ -37,6 +38,7 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
     shareExtendedRecords,
     revokeConsent,
     getAccessStatus,
+    loadFavorites,
   } = usePatient();
 
   const [loading, setLoading] = useState(false);
@@ -45,6 +47,12 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
   useEffect(() => {
     loadAccess();
   }, [favorites]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadFavorites();
+    }, [])
+  );
 
   const loadAccess = async () => {
     setLoading(true);
@@ -195,7 +203,7 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
                 style={styles.detailText}
                 numberOfLines={1}
               >
-                {doctor?.address?.clinic}, {doctor?.address?.city}
+                {[doctor?.address?.clinic, doctor?.address?.city].filter(Boolean).join(', ') || 'Clinic'}
               </Text>
             </View>
           </View>

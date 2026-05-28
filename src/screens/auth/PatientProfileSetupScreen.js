@@ -167,9 +167,16 @@ const PatientProfileSetupScreen = ({ navigation, route }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const updateField = (field, value) => {
-    setFormData({ ...formData, [field]: value });
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+
     if (errors[field]) {
-      setErrors({ ...errors, [field]: null });
+      setErrors((prev) => ({
+        ...prev,
+        [field]: null,
+      }));
     }
   };
 

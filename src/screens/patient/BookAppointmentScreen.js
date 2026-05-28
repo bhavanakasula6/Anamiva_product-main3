@@ -91,14 +91,29 @@ const BookAppointmentScreen = ({ route, navigation }) => {
 
   const loadDoctor = async () => {
     const res = await getDoctorDetails(doctorId);
-    if (res.success) setDoctor(res.doctor);
+    if (res.success) {
+      const doc = res.doctor;
+      const doctorUser = doc?.userId || {};
+      setDoctor({
+        ...doc,
+        fullName: doctorUser.fullName || doctorUser.name || doc?.fullName || 'Doctor',
+        specialization: doc?.speciality || doc?.specialization || 'General Physician',
+        consultationFee: doc?.consultationFee || 0,
+        consultingHours: doc?.consultingHours,
+      });
+    }
     setLoading(false);
   };
 
   const loadAvailability = async () => {
     const dateStr = `${selectedDate.getFullYear()}-${String(selectedDate.getMonth()+1).padStart(2,'0')}-${String(selectedDate.getDate()).padStart(2,'0')}`;
     const res = await getDoctorAvailability(doctorId, dateStr);
-    if (res.success) setAvailableSlots(res.slots);
+    if (res.success) {
+      setAvailableSlots(res.slots);
+      if (selectedTime && !res.slots.some(slot => slot.time === selectedTime && slot.available)) {
+        setSelectedTime(null);
+      }
+    }
   };
 
   const handleBookAppointment = async () => {
@@ -293,7 +308,7 @@ const BookAppointmentScreen = ({ route, navigation }) => {
                 // Client-side: hide past time slots for today
                 const [h, m] = s.time.split(':').map(Number);
                 const slotTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
-                return slotTime > now && s.available;
+                return slotTime > now;
               });
               return displaySlots.length ? (
               displaySlots.map((slot, idx) => {

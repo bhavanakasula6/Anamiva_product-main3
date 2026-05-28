@@ -201,6 +201,7 @@ const DoctorEditProfileScreen = ({ navigation }) => {
                 },
                 avatar: avatarUri || formData.avatar,
                 fullName: `Dr. ${formData.firstName.trim()} ${formData.lastName.trim()}`,
+                name: `Dr. ${formData.firstName.trim()} ${formData.lastName.trim()}`,
                 address: {
                     ...user?.address,
                     clinic: formData.clinicName?.trim() || '',

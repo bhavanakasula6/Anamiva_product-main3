@@ -62,7 +62,10 @@ export const DoctorProvider = ({ children }) => {
       sock.off('consent-granted');
       sock.off('access-request-approved');
       sock.off('appointment-booked');
+      sock.off('appointment-updated');
+      sock.off('emergency-created');
       sock.off('emergency-status-updated');
+      sock.off('connect', registerListeners);
 
       sock.on('consent-granted', (data) => {
         console.log('[DoctorContext] Consent granted by patient:', data);
@@ -77,10 +80,24 @@ export const DoctorProvider = ({ children }) => {
         loadAppointments();
         loadNotifications();
       });
+      sock.on('appointment-updated', (data) => {
+        console.log('[DoctorContext] Appointment updated:', data);
+        loadAppointments();
+        loadNotifications();
+      });
+      sock.on('emergency-created', (data) => {
+        console.log('[DoctorContext] New emergency request:', data);
+        if (lastLocation) {
+          loadNearbyEmergencies(lastLocation.lat, lastLocation.lng);
+        }
+        loadNotifications();
+      });
       sock.on('emergency-status-updated', (data) => {
         console.log('[DoctorContext] Emergency status updated:', data);
         if (data.status === 'cancelled' || data.status === 'completed') {
-          setActiveEmergency(null);
+          setActiveEmergency(prev =>
+            prev && (prev._id || prev.id) === data.emergencyId ? null : prev
+          );
           setEmergencyRequests(prev =>
             prev.filter(req => (req._id || req.id) !== data.emergencyId)
           );
@@ -90,10 +107,7 @@ export const DoctorProvider = ({ children }) => {
       });
 
       // Re-register listeners on socket reconnect
-      sock.on('connect', () => {
-        console.log('[DoctorContext] Socket reconnected, re-registering listeners');
-        registerListeners();
-      });
+      sock.on('connect', registerListeners);
 
       socketListenersRegistered.current = true;
       return true;
@@ -115,11 +129,14 @@ export const DoctorProvider = ({ children }) => {
         sock.off('consent-granted');
         sock.off('access-request-approved');
         sock.off('appointment-booked');
+        sock.off('appointment-updated');
+        sock.off('emergency-created');
         sock.off('emergency-status-updated');
+        sock.off('connect', registerListeners);
       }
       socketListenersRegistered.current = false;
     };
-  }, [user?.id, user?._id, user?.role]);
+  }, [user?.id, user?._id, user?.role, lastLocation?.lat, lastLocation?.lng]);
 
   const loadDoctorData = async () => {
     try {
@@ -166,7 +183,7 @@ export const DoctorProvider = ({ children }) => {
       const response = await appointmentAPI.updateAppointmentStatus(appointmentId, status);
       if (response.success) {
         setAppointments(prev =>
-          prev.map(apt => apt.id === appointmentId ? response.appointment : apt)
+          prev.map(apt => (apt.id || apt._id) === appointmentId ? response.appointment : apt)
         );
         // Also reload from server to ensure state is fully in sync
         loadAppointments();

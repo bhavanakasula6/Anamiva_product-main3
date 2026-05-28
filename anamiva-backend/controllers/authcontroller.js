@@ -4,12 +4,35 @@ const jwt = require("jsonwebtoken");
 const { sendOTP, verifyOTP } = require("../config/otp");
 const { JWT_SECRET, JWT_EXPIRES_IN } = require("../config/env");
 
+const normalizePhone = (phone = "") => {
+  const digits = String(phone).replace(/\D/g, "");
+  if (digits.length > 10) return digits.slice(-10);
+  return digits;
+};
+
+const getPhoneVariants = (phone = "") => {
+  const normalized = normalizePhone(phone);
+  return [...new Set([
+    phone,
+    normalized,
+    `+91${normalized}`,
+    `91${normalized}`,
+  ].filter(Boolean))];
+};
+
+const findUserByPhone = async (phone) => {
+  return User.findOne({
+    phoneNumber: { $in: getPhoneVariants(phone) },
+  }).sort({ isProfileCompleted: -1, updatedAt: -1 });
+};
+
 /* =====================
    SEND OTP (rate limited: max 3/hr per phone)
 ===================== */
 exports.sendOtp = async (req, res) => {
   try {
-    const { phone } = req.body;
+    const rawPhone = req.body.phone;
+    const phone = normalizePhone(rawPhone);
 
     if (!phone)
       return res.status(400).json({
@@ -17,7 +40,8 @@ exports.sendOtp = async (req, res) => {
         message: "Phone required"
       });
 
-    await sendOTP(phone);
+    const smsPhone = String(rawPhone).trim().startsWith('+') ? String(rawPhone).trim() : `+91${phone}`;
+    await sendOTP(smsPhone);
 
     res.json({
       success: true,
@@ -36,7 +60,8 @@ exports.sendOtp = async (req, res) => {
    VERIFY OTP
 ===================== */
 exports.verifyOtp = async (req, res) => {
-  const { phone, otp } = req.body;
+  const phone = normalizePhone(req.body.phone);
+  const { otp } = req.body;
 
   if (!phone || !otp)
     return res.status(400).json({
@@ -51,7 +76,7 @@ exports.verifyOtp = async (req, res) => {
       message: "Invalid or expired OTP"
     });
 
-  let user = await User.findOne({ phoneNumber: phone });
+  let user = await findUserByPhone(phone);
 
   // Mark phone as verified after successful OTP
   // Use updateOne to avoid full document validation (prevents failures from
@@ -123,16 +148,18 @@ exports.verifyOtp = async (req, res) => {
 ===================== */
 exports.selectRole = async (req, res) => {
   const { role } = req.body;
-  const phone = req.user.phone;
+  const phone = normalizePhone(req.user.phone);
 
   if (!["patient", "doctor"].includes(role))
     return res.status(400).json({ message: "Invalid role" });
 
-  await User.findOneAndUpdate(
-    { phoneNumber: phone },
-    { role },
-    { upsert: true, new: true }
-  );
+  const existingUser = await findUserByPhone(phone);
+  if (existingUser) {
+    existingUser.role = role;
+    await existingUser.save({ validateBeforeSave: false });
+  } else {
+    await User.create({ phoneNumber: phone, role });
+  }
 
   res.json({
     success: true,
@@ -145,18 +172,19 @@ exports.selectRole = async (req, res) => {
    COMPLETE PROFILE
 ===================== */
 exports.completeProfile = async (req, res) => {
-  const phone = req.user.phone;
+  const phone = normalizePhone(req.user.phone);
 
-  const user = await User.findOneAndUpdate(
-    { phoneNumber: phone },
-    {
-      ...req.body,
-      name: req.body.fullName || req.body.name || `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim(),
-      isProfileCompleted: true,
-      phoneVerified: true
-    },
-    { new: true }
-  );
+  const profileUpdates = {
+    ...req.body,
+    name: req.body.fullName || req.body.name || `${req.body.firstName || ''} ${req.body.lastName || ''}`.trim(),
+    isProfileCompleted: true,
+    phoneVerified: true
+  };
+
+  const existingUser = await findUserByPhone(phone);
+  const user = existingUser
+    ? await User.findByIdAndUpdate(existingUser._id, profileUpdates, { new: true })
+    : await User.create({ ...profileUpdates, phoneNumber: phone });
 
   // Auto-create Doctor profile if role is doctor and none exists
   let doctorProfile = null;
@@ -223,6 +251,10 @@ exports.completeProfile = async (req, res) => {
         clinicInfo: {
           name: req.body.clinicName || req.body.address?.clinic || '',
           address: req.body.clinicAddress || req.body.address?.street || '',
+        },
+        consultingHours: {
+          start: parseInt(req.body.consultingHours?.start, 10) || 9,
+          end: parseInt(req.body.consultingHours?.end, 10) || 17,
         },
         location: {
           type: 'Point',

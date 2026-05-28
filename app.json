@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.arun522.medApp-native"
+      "bundleIdentifier": "com.anamiva.medapp"
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +21,10 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.arun522.medApp_native"
+      "package": "com.anamiva.medapp",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "output": "static",
@@ -53,8 +56,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "5b3aae8f-7034-4ce6-9ae2-dbcffdaaf161"
+        "projectId": "be522b8f-6d59-4a6b-aafe-3e89fdcf9231"
       }
-    }
+    },
+    "owner": "bhavana6"
   }
 }

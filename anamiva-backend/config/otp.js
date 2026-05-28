@@ -42,15 +42,20 @@ const generateOTP = () => {
   return otp;
 };
 
+const normalizePhoneKey = (phone = "") => {
+  const digits = String(phone).replace(/\D/g, "");
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 const saveOTP = async (phone, otp) => {
-  await client.setEx(`otp:${phone}`, OTP_EXPIRES_IN, otp);
+  await client.setEx(`otp:${normalizePhoneKey(phone)}`, OTP_EXPIRES_IN, otp);
 };
 
 const verifyOTP = async (phone, otp) => {
-  const saved = await client.get(`otp:${phone}`);
+  const saved = await client.get(`otp:${normalizePhoneKey(phone)}`);
   console.log(`OTP verify: phone=${phone}, provided=${otp}, saved=${saved}`);
   if (saved && saved.toString().trim() === otp.toString().trim()) {
-    await client.del(`otp:${phone}`);
+    await client.del(`otp:${normalizePhoneKey(phone)}`);
     return true;
   }
   return false;

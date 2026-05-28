@@ -41,7 +41,7 @@ export const URGENCY_LEVELS = {
 export const EMERGENCY_STATUS = {
   PENDING: 'pending',
   ACCEPTED: 'accepted',
-  IN_PROGRESS: 'in-progress',
+  IN_PROGRESS: 'in_progress',
   COMPLETED: 'completed',
   CANCELLED: 'cancelled',
 };

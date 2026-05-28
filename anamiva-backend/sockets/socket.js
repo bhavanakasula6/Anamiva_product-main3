@@ -40,6 +40,9 @@ const initSocket = (httpServer) => {
     // Auto-join user's personal room for targeted notifications (video calls, etc.)
     if (socket.user?.id) {
       socket.join(`user_${socket.user.id}`);
+      if (socket.user.role) {
+        socket.join(`${socket.user.role}s`);
+      }
     }
 
     // Register emergency chat events

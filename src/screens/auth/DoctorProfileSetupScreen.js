@@ -26,6 +26,12 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
   const { phone, role } = route.params;
   const { completeProfile } = useAuth();
 
+  const HOUR_OPTIONS = Array.from({ length: 17 }, (_, i) => {
+    const h = i + 6;
+    const label = h < 12 ? `${h}:00 AM` : h === 12 ? '12:00 PM' : `${h - 12}:00 PM`;
+    return { value: h, label };
+  });
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -41,17 +47,26 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
     state: '',
     city: '',
     bio: '',
+    consultingHourStart: 9,
+    consultingHourEnd: 17,
   });
 
   const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
 
   const updateField = (field, value) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) {
-      setErrors({ ...errors, [field]: null });
-    }
-  };
+  setFormData((prev) => ({
+    ...prev,
+    [field]: value,
+  }));
+
+  if (errors[field]) {
+    setErrors((prev) => ({
+      ...prev,
+      [field]: null,
+    }));
+  }
+};
 
   const validate = () => {
     const newErrors = {};
@@ -107,6 +122,10 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
         },
         clinicName: formData.clinicName,
         clinicAddress: formData.clinicAddress,
+        consultingHours: {
+          start: formData.consultingHourStart,
+          end: formData.consultingHourEnd,
+        },
         location: {
           latitude: 19.0760 + (Math.random() - 0.5) * 0.1,
           longitude: 72.8777 + (Math.random() - 0.5) * 0.1,
@@ -307,6 +326,38 @@ const DoctorProfileSetupScreen = ({ navigation, route }) => {
                 error={errors.consultationFee}
               />
 
+              <Text style={styles.sectionTitle}>Consulting Hours</Text>
+              <View style={styles.hoursRow}>
+                <View style={styles.hourPicker}>
+                  <DropdownPicker
+                    label="Start Time"
+                    placeholder="Start"
+                    value={HOUR_OPTIONS.find(h => h.value === formData.consultingHourStart)?.label || '9:00 AM'}
+                    options={HOUR_OPTIONS.map(h => h.label)}
+                    onSelect={(label) => {
+                      const hour = HOUR_OPTIONS.find(h => h.label === label);
+                      if (!hour) return;
+                      updateField('consultingHourStart', hour.value);
+                      if (formData.consultingHourEnd <= hour.value) {
+                        updateField('consultingHourEnd', hour.value + 1);
+                      }
+                    }}
+                  />
+                </View>
+                <View style={styles.hourPicker}>
+                  <DropdownPicker
+                    label="End Time"
+                    placeholder="End"
+                    value={HOUR_OPTIONS.find(h => h.value === formData.consultingHourEnd)?.label || '5:00 PM'}
+                    options={HOUR_OPTIONS.filter(h => h.value > formData.consultingHourStart).map(h => h.label)}
+                    onSelect={(label) => {
+                      const hour = HOUR_OPTIONS.find(h => h.label === label);
+                      if (hour) updateField('consultingHourEnd', hour.value);
+                    }}
+                  />
+                </View>
+              </View>
+
               <Input
                 label="Bio"
                 value={formData.bio}
@@ -481,6 +532,14 @@ const styles = StyleSheet.create({
   },
   specializationTextSelected: {
     color: colors.primary[500],
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    marginBottom: spacing.md,
+  },
+  hourPicker: {
+    flex: 1,
   },
   errorText: {
     fontSize: typography.fontSize.xs,

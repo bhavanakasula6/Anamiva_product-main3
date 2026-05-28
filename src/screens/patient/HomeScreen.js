@@ -307,11 +307,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   quickActionCard: {
-    width: '47%',
+    flexBasis: '47%',
+    flexGrow: 1,
+    minHeight: 118,
     backgroundColor: colors.surface.card,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
     alignItems: 'center',
+    justifyContent: 'center',
     ...shadows.sm,
   },
   quickActionIcon: {
@@ -330,6 +333,7 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.medium,
     color: colors.gray[700],
     textAlign: 'center',
+    flexShrink: 1,
   },
   appointmentCard: {
     marginBottom: spacing.md,

@@ -87,6 +87,12 @@ const EditProfileScreen = ({ navigation }) => {
     try {
       const response = await updateProfile({
         ...formData,
+
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        fullName: `${formData.firstName} ${formData.lastName}`,
+        name: `${formData.firstName} ${formData.lastName}`,
+
         address: {
           street: formData.address,
           city: formData.city,

@@ -4,7 +4,7 @@
  */
 
 import { createContext, useContext, useEffect, useState } from 'react';
-import { ACCESS_STATUS, CONSENT_STATUS } from '../data/constants';
+import { ACCESS_STATUS, CONSENT_STATUS, EMERGENCY_STATUS } from '../data/constants';
 import {
   accessRequestAPI,
   appointmentAPI,
@@ -19,6 +19,41 @@ import { useAuth } from './AuthContext';
 import socketService from '../services/socketService';
 
 const PatientContext = createContext(null);
+
+const getDoctorId = (doctor) => doctor?._id || doctor?.id;
+
+const normalizeDoctor = (doctor) => {
+  if (!doctor) return doctor;
+
+  const userData = doctor.userId || {};
+  const fullName =
+    userData.fullName ||
+    userData.name ||
+    (userData.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : '') ||
+    doctor.fullName ||
+    doctor.name ||
+    'Doctor';
+
+  return {
+    ...doctor,
+    id: getDoctorId(doctor),
+    _id: getDoctorId(doctor),
+    fullName,
+    name: fullName,
+    avatar: userData.profilePicture || userData.avatar || doctor.avatar || '',
+    specialization: doctor.speciality || doctor.specialization || 'General Physician',
+    speciality: doctor.speciality || doctor.specialization || 'General Physician',
+    address: {
+      ...(typeof userData.address === 'object' ? userData.address : {}),
+      clinic: doctor.clinicInfo?.name || userData.address?.clinic || '',
+      street: doctor.clinicInfo?.address || userData.address?.street || '',
+    },
+    consultationFee: doctor.consultationFee || 0,
+    rating: doctor.rating || 0,
+    reviewCount: doctor.reviewCount || 0,
+    experience: doctor.experience || 0,
+  };
+};
 
 export const PatientProvider = ({ children }) => {
   const { user, isPatient } = useAuth();
@@ -42,32 +77,76 @@ export const PatientProvider = ({ children }) => {
 
   // Listen for real-time appointment status updates via socket
   useEffect(() => {
-    if (user && user.role === 'patient') {
-      console.log('[PatientContext] Setting up socket listeners for appointment updates');
+    if (!user || user.role !== 'patient') return;
 
-      socketService.onAppointmentUpdated((data) => {
+    let interval = null;
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      socket.off('appointment-updated');
+      socket.off('consultation-access-requested');
+      socket.off('emergency-accepted');
+      socket.off('emergency-status-updated');
+      socket.off('connect', registerListeners);
+
+      socket.on('appointment-updated', (data) => {
         console.log('[PatientContext] Received appointment-updated event:', data);
         loadAppointments();
         loadNotifications();
       });
 
-      // Listen for consultation access requests from doctors
+      socket.on('consultation-access-requested', (data) => {
+        console.log('[PatientContext] Doctor requested consultation access:', data);
+        loadRequests();
+        loadNotifications();
+      });
+
+      socket.on('emergency-accepted', (data) => {
+        console.log('[PatientContext] Emergency accepted:', data);
+        setEmergencyRequest(prev =>
+          prev
+            ? { ...prev, status: EMERGENCY_STATUS.ACCEPTED, acceptedAt: data.acceptedAt }
+            : prev
+        );
+        loadNotifications();
+      });
+
+      socket.on('emergency-status-updated', (data) => {
+        console.log('[PatientContext] Emergency status updated:', data);
+        if (data.status === EMERGENCY_STATUS.CANCELLED || data.status === EMERGENCY_STATUS.COMPLETED) {
+          setEmergencyRequest(null);
+        } else {
+          setEmergencyRequest(prev => prev ? { ...prev, status: data.status } : prev);
+        }
+        loadNotifications();
+      });
+
+      socket.on('connect', registerListeners);
+      return true;
+    };
+
+    if (!registerListeners()) {
+      interval = setInterval(() => {
+        if (registerListeners()) {
+          clearInterval(interval);
+          interval = null;
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
       const socket = socketService.getSocket();
       if (socket) {
-        socket.on('consultation-access-requested', (data) => {
-          console.log('[PatientContext] Doctor requested consultation access:', data);
-          loadRequests();
-          loadNotifications();
-        });
+        socket.off('appointment-updated');
+        socket.off('consultation-access-requested');
+        socket.off('emergency-accepted');
+        socket.off('emergency-status-updated');
+        socket.off('connect', registerListeners);
       }
-
-      return () => {
-        socketService.offAppointmentUpdated();
-        if (socket) {
-          socket.off('consultation-access-requested');
-        }
-      };
-    }
+    };
   }, [user?.id, user?._id, user?.role]);
 
 
@@ -170,6 +249,12 @@ export const PatientProvider = ({ children }) => {
   const searchDoctors = async (filters = {}) => {
     try {
       const response = await doctorAPI.searchDoctors(filters);
+      if (response.success) {
+        return {
+          ...response,
+          doctors: (response.doctors || []).map(normalizeDoctor),
+        };
+      }
       return response;
     } catch (error) {
       console.error('Error searching doctors:', error);
@@ -180,6 +265,12 @@ export const PatientProvider = ({ children }) => {
   const getDoctorDetails = async (doctorId) => {
     try {
       const response = await doctorAPI.getDoctorById(doctorId);
+      if (response.success) {
+        return {
+          ...response,
+          doctor: normalizeDoctor(response.doctor),
+        };
+      }
       return response;
     } catch (error) {
       console.error('Error getting doctor details:', error);
@@ -198,10 +289,10 @@ export const PatientProvider = ({ children }) => {
   };
 
   const toggleFavorite = async (doctorId) => {
-    const wasFavorite = favorites.some(d => d.id === doctorId);
+    const wasFavorite = favorites.some(d => getDoctorId(d) === doctorId);
     setFavorites(prev =>
       wasFavorite
-        ? prev.filter(d => d.id !== doctorId)
+        ? prev.filter(d => getDoctorId(d) !== doctorId)
         : [...prev, { id: doctorId }]
     );
 
@@ -218,7 +309,7 @@ export const PatientProvider = ({ children }) => {
       setFavorites(prev =>
         wasFavorite
           ? [...prev, { id: doctorId }]
-          : prev.filter(d => d.id !== doctorId)
+          : prev.filter(d => getDoctorId(d) !== doctorId)
       );
       return { success: false };
     }
@@ -228,7 +319,7 @@ export const PatientProvider = ({ children }) => {
     try {
       const response = await doctorAPI.getFavorites();
       if (response.success) {
-        setFavorites(response.doctors);
+        setFavorites((response.doctors || []).map(normalizeDoctor));
       }
       return response;
     } catch (error) {
@@ -589,6 +680,7 @@ export const PatientProvider = ({ children }) => {
     getDoctorDetails,
     getDoctorAvailability,
     toggleFavorite,
+    loadFavorites,
     createEmergencyRequest,
     sendEmergencyMessage,
     getEmergencyMessages,

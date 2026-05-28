@@ -56,8 +56,8 @@ const HomeStack = () => (
     <Stack.Screen name="EmergencyRequest" component={EmergencyRequestScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="EditProfile" component={EditProfileScreen} />
+    <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="FavoriteDoctors" component={FavoriteDoctorsScreen} />
     <Stack.Screen name="RecordDetails" component={RecordDetailsScreen} />
   </Stack.Navigator>
@@ -79,6 +79,7 @@ const RecordsStack = () => (
     <Stack.Screen name="UploadRecord" component={UploadRecordScreen} />
     <Stack.Screen name="Notifications" component={NotificationsScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
+    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
     <Stack.Screen name="RecordDetails" component={RecordDetailsScreen} />
   </Stack.Navigator>

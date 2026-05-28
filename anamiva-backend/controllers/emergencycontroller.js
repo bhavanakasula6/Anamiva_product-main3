@@ -52,6 +52,19 @@ exports.createEmergency = async (req, res) => {
       },
     });
 
+    try {
+      const { getIO } = require('../sockets/socket');
+      const io = getIO();
+      io.to('doctors').emit('emergency-created', {
+        emergencyId: emergency._id.toString(),
+        status: emergency.status,
+        urgency: emergency.urgency,
+        createdAt: emergency.createdAt,
+      });
+    } catch (socketErr) {
+      console.warn('Socket emit failed:', socketErr.message);
+    }
+
     res.status(201).json({ success: true, emergency });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

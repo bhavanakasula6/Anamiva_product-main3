@@ -3,6 +3,7 @@
  * Manages user authentication state and operations
  */
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import api, { authAPI } from '../services/api';
 import storage from '../services/storage';
@@ -16,7 +17,6 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
-  // Load user from storage on app start
   useEffect(() => {
     loadUserFromStorage();
   }, []);
@@ -24,6 +24,17 @@ export const AuthProvider = ({ children }) => {
   const loadUserFromStorage = async () => {
     try {
       setLoading(true);
+      try {
+        const oldRawToken = await AsyncStorage.getItem('auth_token');
+        const newToken = await storage.getToken(); // reads 'medapp_token'
+        if (oldRawToken && !newToken) {
+          await storage.saveToken(oldRawToken); // writes JSON-wrapped to 'medapp_token'
+          await AsyncStorage.removeItem('auth_token'); // clean up old key
+          console.log('[Auth] Migrated token from auth_token → medapp_token');
+        }
+      } catch (migrationError) {
+        console.warn('[Auth] Token migration failed (non-fatal):', migrationError);
+      }
       const storedUser = await storage.getUser();
       const storedToken = await storage.getToken();
 
@@ -32,6 +43,27 @@ export const AuthProvider = ({ children }) => {
         api.setCurrentUser(storedUser);
         setToken(storedToken);
         setIsAuthenticated(true);
+
+        const response = await authAPI.getCurrentUser();
+        const shouldClearSession =
+          (!response.success && !response.isNetworkError && [401, 403].includes(response.status)) ||
+          (response.success && !response.user?.isProfileCompleted);
+
+        if (shouldClearSession) {
+          await storage.logout();
+          await AsyncStorage.removeItem('auth_token');
+          setUser(null);
+          api.setCurrentUser(null);
+          setToken(null);
+          setIsAuthenticated(false);
+          return;
+        }
+
+        if (response.success && response.user) {
+          setUser(response.user);
+          api.setCurrentUser(response.user);
+          await storage.saveUser(response.user);
+        }
       }
     } catch (error) {
       console.error('Error loading user from storage:', error);

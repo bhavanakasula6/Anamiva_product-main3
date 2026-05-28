@@ -1,6 +1,10 @@
 /**
  * Settings Screen
  * App settings and preferences
+ *
+ * FIX Bug 2b — Added "Edit Profile" item to the Account section.
+ * It navigates to 'DoctorEditProfile' for doctors and 'EditProfile'
+ * for patients so both roles can reach their edit screen from Settings.
  */
 
 import React from 'react';
@@ -15,71 +19,33 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '../../contexts/AuthContext';
-
-import {
-  colors,
-  typography,
-  spacing,
-  borderRadius,
-  shadows,
-} from '../../styles/theme';
-
-import {
-  Card,
-  Header,
-  Button,
-} from '../../components/common';
-
+import { colors, typography, spacing, borderRadius, shadows } from '../../styles/theme';
+import { Card, Header, Button } from '../../components/common';
 import Icon from '../../components/Icon';
 
 const SettingsScreen = ({ navigation }) => {
   const { user, logout } = useAuth();
+  const isDoctor = user?.role === 'doctor';
 
   const handleLogout = () => {
-    Alert.alert(
-      'Logout',
-      'Are you sure you want to logout?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: logout,
-        },
-      ]
-    );
+    Alert.alert('Logout', 'Are you sure you want to logout?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Logout', style: 'destructive', onPress: logout },
+    ]);
   };
 
   const SettingItem = ({ icon, title, subtitle, onPress }) => (
-    <TouchableOpacity
-      style={styles.settingItem}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.settingItem} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.iconBox}>
-        <Icon
-          name={icon}
-          size={18}
-          color={colors.primary[500]}
-        />
+        <Icon name={icon} size={18} color={colors.primary[500]} />
       </View>
-
       <View style={styles.textBox}>
-        <Text style={styles.title} numberOfLines={1}>
-          {title}
-        </Text>
+        <Text style={styles.title} numberOfLines={1}>{title}</Text>
         {subtitle && (
-          <Text style={styles.subtitle} numberOfLines={2}>
-            {subtitle}
-          </Text>
+          <Text style={styles.subtitle} numberOfLines={2}>{subtitle}</Text>
         )}
       </View>
-
-      <Icon
-        name="chevron-right"
-        size={18}
-        color={colors.gray[400]}
-      />
+      <Icon name="chevron-right" size={18} color={colors.gray[400]} />
     </TouchableOpacity>
   );
 
@@ -91,14 +57,23 @@ const SettingsScreen = ({ navigation }) => {
         onLeftPress={() => navigation.goBack()}
       />
 
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-      >
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
+
           {/* ACCOUNT */}
           <Section title="Account">
             <Card style={styles.card}>
+
+              {/* ── Bug 2b fix: Edit Profile item ──────────────────────────── */}
+              <SettingItem
+                icon="edit"
+                title="Edit Profile"
+                subtitle="Update your profile information"
+                onPress={() =>
+                  navigation.navigate(isDoctor ? 'DoctorEditProfile' : 'EditProfile')
+                }
+              />
+              <Divider />
 
               <SettingItem
                 icon="bell"
@@ -107,13 +82,12 @@ const SettingsScreen = ({ navigation }) => {
                 onPress={() => navigation.navigate('Notifications')}
               />
               <Divider />
+
               <SettingItem
                 icon="lock"
                 title="Privacy & Security"
                 subtitle="Manage privacy settings"
-                onPress={() =>
-                  Alert.alert('Privacy', 'Privacy settings coming soon')
-                }
+                onPress={() => Alert.alert('Privacy', 'Privacy settings coming soon')}
               />
             </Card>
           </Section>
@@ -125,18 +99,14 @@ const SettingsScreen = ({ navigation }) => {
                 icon="settings"
                 title="Dark Mode"
                 subtitle="Switch theme appearance"
-                onPress={() =>
-                  Alert.alert('Dark Mode', 'Dark mode coming soon')
-                }
+                onPress={() => Alert.alert('Dark Mode', 'Dark mode coming soon')}
               />
               <Divider />
               <SettingItem
                 icon="globe"
                 title="Language"
                 subtitle="English"
-                onPress={() =>
-                  Alert.alert('Language', 'Language settings coming soon')
-                }
+                onPress={() => Alert.alert('Language', 'Language settings coming soon')}
               />
             </Card>
           </Section>
@@ -155,18 +125,14 @@ const SettingsScreen = ({ navigation }) => {
                 icon="file-text"
                 title="Terms & Conditions"
                 subtitle="Read our terms"
-                onPress={() =>
-                  Alert.alert('Terms', 'Terms & Conditions coming soon')
-                }
+                onPress={() => Alert.alert('Terms', 'Terms & Conditions coming soon')}
               />
               <Divider />
               <SettingItem
                 icon="shield"
                 title="Privacy Policy"
                 subtitle="Read our privacy policy"
-                onPress={() =>
-                  Alert.alert('Privacy', 'Privacy Policy coming soon')
-                }
+                onPress={() => Alert.alert('Privacy', 'Privacy Policy coming soon')}
               />
             </Card>
           </Section>
@@ -179,16 +145,12 @@ const SettingsScreen = ({ navigation }) => {
                 title="About MedApp"
                 subtitle="Version 1.0.0"
                 onPress={() =>
-                  Alert.alert(
-                    'MedApp',
-                    'Version 1.0.0\n\nYour healthcare companion'
-                  )
+                  Alert.alert('MedApp', 'Version 1.0.0\n\nYour healthcare companion')
                 }
               />
             </Card>
           </Section>
 
-          {/* LOGOUT */}
           <Button
             variant="outline"
             fullWidth
@@ -205,8 +167,6 @@ const SettingsScreen = ({ navigation }) => {
   );
 };
 
-/* ---------- HELPERS ---------- */
-
 const Section = ({ title, children }) => (
   <View style={styles.section}>
     <Text style={styles.sectionTitle}>{title}</Text>
@@ -216,27 +176,11 @@ const Section = ({ title, children }) => (
 
 const Divider = () => <View style={styles.divider} />;
 
-/* ---------- STYLES ---------- */
-
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.white,
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: colors.gray[50],
-  },
-
-  content: {
-    padding: spacing.lg,
-  },
-
-  section: {
-    marginBottom: spacing.xl,
-  },
-
+  safeArea: { flex: 1, backgroundColor: colors.white },
+  container: { flex: 1, backgroundColor: colors.gray[50] },
+  content: { padding: spacing.lg },
+  section: { marginBottom: spacing.xl },
   sectionTitle: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.semiBold,
@@ -246,18 +190,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.xs,
   },
-
-  card: {
-    padding: 0,
-    ...shadows.sm,
-  },
-
+  card: { padding: 0, ...shadows.sm },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: spacing.lg,
   },
-
   iconBox: {
     width: 40,
     height: 40,
@@ -267,33 +205,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: spacing.md,
   },
-
-  textBox: {
-    flex: 1,
-  },
-
+  textBox: { flex: 1 },
   title: {
     fontSize: typography.fontSize.base,
     fontFamily: typography.fontFamily.medium,
     color: colors.gray[900],
   },
-
   subtitle: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.regular,
     color: colors.gray[600],
     marginTop: spacing.xs / 2,
   },
-
   divider: {
     height: 1,
     backgroundColor: colors.gray[200],
     marginLeft: spacing.lg + 40 + spacing.md,
   },
-
-  logoutButton: {
-    borderColor: colors.primary[500],
-  },
+  logoutButton: { borderColor: colors.primary[500] },
 });
 
 export default SettingsScreen;

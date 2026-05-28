@@ -39,6 +39,19 @@ const calculateAge = (dateOfBirth) => {
   }
 };
 
+const parseDateOnly = (date) => {
+  const [year, month, day] = String(date).split('-').map(Number);
+  return new Date(year, month - 1, day);
+};
+
+const getAppointmentDateRange = (date) => {
+  const day = parseDateOnly(date);
+  return {
+    startOfDay: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 0, 0, 0, 0),
+    endOfDay: new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59, 999),
+  };
+};
+
 // Transform appointment for frontend
 const transformAppointment = (apt) => {
   const aptObj = apt.toObject ? apt.toObject() : apt;
@@ -96,7 +109,6 @@ exports.createAppointment = async (req, res) => {
 
     // Validate date range — parse YYYY-MM-DD safely to avoid timezone issues
     const [year, month, day] = date.split('-').map(Number);
-    const appointmentDate = new Date(year, month - 1, day);
     const now = new Date();
 
     // Compare date only (strip time) — allow booking today
@@ -125,9 +137,30 @@ exports.createAppointment = async (req, res) => {
       });
     }
 
+    const doctor = await Doctor.findById(doctorId);
+    if (!doctor) {
+      return res.status(404).json({ success: false, message: 'Doctor not found' });
+    }
+
+    const startHour = Number.isFinite(doctor.consultingHours?.start) ? doctor.consultingHours.start : 9;
+    const endHour = Number.isFinite(doctor.consultingHours?.end) ? doctor.consultingHours.end : 17;
+    const [slotHour, slotMinute] = time.split(':').map(Number);
+    const slotStartMinutes = slotHour * 60 + slotMinute;
+    const slotEndMinutes = slotStartMinutes + 30;
+
+    if (slotStartMinutes < startHour * 60 || slotEndMinutes > endHour * 60) {
+      return res.status(400).json({
+        success: false,
+        message: `Selected time is outside the doctor's consulting hours (${String(startHour).padStart(2, '0')}:00-${String(endHour).padStart(2, '0')}:00)`,
+      });
+    }
+
     // Check slot availability
+    const { startOfDay, endOfDay } = getAppointmentDateRange(date);
     const existing = await Appointment.findOne({
-      doctorId, date, time,
+      doctorId,
+      date: { $gte: startOfDay, $lte: endOfDay },
+      time,
       status: { $in: ['pending', 'upcoming'] },
     });
     if (existing) return res.status(409).json({ success: false, message: 'Time slot already booked' });
@@ -341,6 +374,13 @@ exports.updateStatus = async (req, res) => {
         appointmentId: appointment._id.toString(),
         status,
       });
+      const doctorProfile = await Doctor.findById(appointment.doctorId);
+      if (doctorProfile) {
+        io.to(`user_${doctorProfile.userId.toString()}`).emit('appointment-updated', {
+          appointmentId: appointment._id.toString(),
+          status,
+        });
+      }
     } catch (socketErr) {
       console.warn('Socket emit failed:', socketErr.message);
     }
@@ -388,6 +428,20 @@ exports.cancelAppointment = async (req, res) => {
     }
 
     await appointment.save();
+
+    try {
+      const { getIO } = require('../sockets/socket');
+      const io = getIO();
+      const doctorProfile = await Doctor.findById(appointment.doctorId);
+      if (doctorProfile) {
+        io.to(`user_${doctorProfile.userId.toString()}`).emit('appointment-updated', {
+          appointmentId: appointment._id.toString(),
+          status: appointment.status,
+        });
+      }
+    } catch (socketErr) {
+      console.warn('Socket emit failed:', socketErr.message);
+    }
 
     // Re-populate so transformAppointment has full patient/doctor data
     const populated = await Appointment.findById(appointment._id)

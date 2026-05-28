@@ -3,6 +3,23 @@ const User = require("../models/user");
 const Appointment = require("../models/appointment");
 const { calculateDistanceKm } = require("../services/geoservice");
 
+const escapeRegExp = (value = "") => {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const getSpecialityRegex = (specialization) => {
+  if (!specialization) return null;
+
+  const aliases = {
+    "General Physician": ["General Physician", "General Medicine"],
+    Orthopedic: ["Orthopedic", "Orthopedist", "Orthopedics"],
+    ENT: ["ENT", "Otolaryngologist"],
+  };
+
+  const values = aliases[specialization] || [specialization];
+  return new RegExp(values.map(escapeRegExp).join("|"), "i");
+};
+
 /* =========================
    CREATE DOCTOR PROFILE
 ========================= */
@@ -49,7 +66,7 @@ exports.getDoctors = async (req, res) => {
 
     const filter = {};
 
-    if (specialization) filter.speciality = specialization;
+    if (specialization) filter.speciality = getSpecialityRegex(specialization);
 
     if (availableNow)
       filter["availability.online"] = availableNow === "true";
@@ -61,7 +78,7 @@ exports.getDoctors = async (req, res) => {
     let cityUserIds = null;
     if (city) {
       const cityUsers = await User.find({
-        "address.city": new RegExp(`^${city}$`, "i"),
+        "address.city": new RegExp(`^${escapeRegExp(city.trim())}$`, "i"),
       }).select("_id");
       cityUserIds = cityUsers.map((u) => u._id);
     }
@@ -71,21 +88,23 @@ exports.getDoctors = async (req, res) => {
       filter.userId = { $in: cityUserIds };
     }
 
-    if (query) {
+    if (query?.trim()) {
+      const searchRegex = new RegExp(escapeRegExp(query.trim()), "i");
       // Text search: match by speciality, clinic name, or doctor name
       const matchingUsers = await User.find({
         $or: [
-          { name: new RegExp(query, "i") },
-          { fullName: new RegExp(query, "i") },
-          { firstName: new RegExp(query, "i") },
-          { lastName: new RegExp(query, "i") },
+          { name: searchRegex },
+          { fullName: searchRegex },
+          { firstName: searchRegex },
+          { lastName: searchRegex },
         ],
         ...(cityUserIds ? { _id: { $in: cityUserIds } } : {}),
       }).select("_id");
 
       const orConditions = [
-        { speciality: new RegExp(query, "i") },
-        { "clinicInfo.name": new RegExp(query, "i") },
+        { speciality: searchRegex },
+        { "clinicInfo.name": searchRegex },
+        { "clinicInfo.address": searchRegex },
       ];
       if (matchingUsers.length > 0) {
         orConditions.push({ userId: { $in: matchingUsers.map((u) => u._id) } });
@@ -109,9 +128,16 @@ exports.getDoctors = async (req, res) => {
 
     const skip = (Number(page) - 1) * Number(limit);
 
+    const allowedSorts = {
+      rating: { rating: -1, reviewCount: -1 },
+      experience: { experience: -1 },
+      consultationFee: { consultationFee: 1 },
+    };
+    const sortOption = sortBy === "distance" ? {} : (allowedSorts[sortBy] || allowedSorts.rating);
+
     let doctors = await Doctor.find(filter)
-      .populate("userId", "name fullName firstName lastName profilePicture address")
-      .sort(sortBy === "distance" ? {} : { [sortBy]: -1 })
+      .populate("userId", "name fullName firstName lastName profilePicture avatar address")
+      .sort(sortOption)
       .skip(skip)
       .limit(Number(limit));
 
@@ -192,12 +218,12 @@ exports.getDoctorAvailability = async (req, res) => {
     const allSlots = [];
     for (let h = startHour; h < endHour; h++) {
       for (let m = 0; m < 60; m += slotDuration) {
+        if (h * 60 + m + slotDuration > endHour * 60) continue;
         allSlots.push(
           `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
         );
       }
     }
-    allSlots.push(`${String(endHour).padStart(2, '0')}:00`);
 
     // Find already booked slots for this doctor on this date
     // Parse YYYY-MM-DD safely to avoid timezone issues
@@ -252,7 +278,7 @@ exports.toggleFavorite = async (req, res) => {
   const user = await User.findById(req.user.id);
 
   const doctorId = req.params.doctorId;
-  const index = user.favorites.indexOf(doctorId);
+  const index = user.favorites.findIndex(id => id.toString() === doctorId);
 
   let isFavorite;
 
@@ -281,7 +307,10 @@ exports.toggleFavorite = async (req, res) => {
 exports.getFavorites = async (req, res) => {
   const user = await User.findById(req.user.id).populate({
     path: "favorites",
-    populate: { path: "userId", select: "name profilePicture" }
+    populate: {
+      path: "userId",
+      select: "name fullName firstName lastName profilePicture avatar address"
+    }
   });
 
   res.json({

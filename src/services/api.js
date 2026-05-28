@@ -218,7 +218,7 @@ export const doctorAPI = {
 
   // Get favorite doctors
   getFavorites: async () => {
-    const response = await httpClient.get('/doctors/favorites/me');
+    const response = await httpClient.get('/doctors/favorites');
     return response;
   },
 };

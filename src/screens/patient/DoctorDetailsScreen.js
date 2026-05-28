@@ -39,7 +39,7 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
   const [doctor, setDoctor] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const isFavorite = !!favorites?.find(d => d.id === doctorId);
+  const isFavorite = !!favorites?.find(d => (d._id || d.id) === doctorId);
 
   useEffect(() => {
     loadDoctorDetails();
@@ -96,7 +96,7 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
           <Avatar
             source={{ uri: doctor.userId?.profilePicture || doctor.avatar }}
             size={110}
-            name={doctor.userId?.name || doctor.fullName}
+            name={doctor.fullName}
           />
 
           {(doctor.availability?.online || doctor.availability?.isOnline) && (
@@ -109,12 +109,10 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
         {/* Doctor Info */}
         <View style={styles.infoSection}>
           <Text style={styles.doctorName}>
-            {doctor.userId?.fullName || doctor.userId?.name ||
-             (doctor.userId?.firstName ? `${doctor.userId.firstName} ${doctor.userId.lastName || ''}`.trim() : null) ||
-             doctor.fullName || 'Doctor'}
+            {doctor.fullName || 'Doctor'}
           </Text>
           <Text style={styles.specialization}>
-            {doctor.speciality || doctor.specialization}
+            {doctor.specialization || doctor.speciality}
           </Text>
 
           <View style={styles.ratingRow}>
@@ -137,7 +135,7 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
 
             <View style={styles.statItem}>
               <Text style={styles.statValue}>
-                {doctor.totalPatients}
+                {doctor.totalPatients || 0}
               </Text>
               <Text style={styles.statLabel}>Patients</Text>
             </View>
@@ -194,8 +192,8 @@ const DoctorDetailsScreen = ({ route, navigation }) => {
                 </Text>
                 <Text style={styles.addressText}>
                   {[
-                    doctor.clinicInfo?.address || doctor.userId?.address?.street,
-                    doctor.userId?.address?.city
+                    doctor.clinicInfo?.address || doctor.address?.street || doctor.userId?.address?.street,
+                    doctor.address?.city || doctor.userId?.address?.city
                   ].filter(Boolean).join(', ') || '-'}
                 </Text>
               </View>

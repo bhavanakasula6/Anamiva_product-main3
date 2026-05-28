@@ -2,7 +2,8 @@
  * Appointments List Screen
  * View all appointments with tabs for different statuses
  */
-
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
 import { useEffect, useState } from 'react';
 import {
   FlatList,
@@ -30,6 +31,12 @@ const AppointmentsScreen = ({ navigation }) => {
     await loadAppointments();
     setRefreshing(false);
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAppointments();
+    }, [])
+  );
 
   const tabs = [
     { id: APPOINTMENT_STATUS.PENDING, label: 'Pending' },

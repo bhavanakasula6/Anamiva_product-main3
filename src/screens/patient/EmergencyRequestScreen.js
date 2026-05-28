@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import * as Location from 'expo-location';
 
 import { usePatient } from '../../contexts/PatientContext';
@@ -59,15 +60,25 @@ const EmergencyRequestScreen = ({ navigation }) => {
     getUserLocation();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      checkActiveEmergency();
+    }, [])
+  );
+
   // Listen for real-time emergency updates via socket
   useEffect(() => {
-    const socket = socketService.getSocket?.() || socketService.socket;
-    if (!socket) return;
+    let interval = null;
 
     const handleAccepted = (data) => {
       console.log('[Emergency] Doctor accepted:', data);
-      setActiveEmergency(prev => prev ? { ...prev, status: 'accepted', acceptedAt: data.acceptedAt } : prev);
+      setActiveEmergency(prev =>
+        prev
+          ? { ...prev, status: 'accepted', acceptedAt: data.acceptedAt }
+          : prev
+      );
       setDoctorInfo(data.doctor);
+      checkActiveEmergency();
     };
 
     const handleStatusUpdate = (data) => {
@@ -84,12 +95,38 @@ const EmergencyRequestScreen = ({ navigation }) => {
       }
     };
 
-    socket.on('emergency-accepted', handleAccepted);
-    socket.on('emergency-status-updated', handleStatusUpdate);
+    const registerListeners = () => {
+      const socket = socketService.getSocket?.();
+      if (!socket) return false;
 
-    return () => {
       socket.off('emergency-accepted', handleAccepted);
       socket.off('emergency-status-updated', handleStatusUpdate);
+      socket.off('connect', registerListeners);
+
+      socket.on('emergency-accepted', handleAccepted);
+      socket.on('emergency-status-updated', handleStatusUpdate);
+      socket.on('connect', registerListeners);
+
+      return true;
+    };
+
+    if (!registerListeners()) {
+      interval = setInterval(() => {
+        if (registerListeners()) {
+          clearInterval(interval);
+          interval = null;
+        }
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+      const socket = socketService.getSocket?.();
+      if (socket) {
+        socket.off('emergency-accepted', handleAccepted);
+        socket.off('emergency-status-updated', handleStatusUpdate);
+        socket.off('connect', registerListeners);
+      }
     };
   }, []);
 

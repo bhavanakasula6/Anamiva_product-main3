@@ -6,17 +6,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5001/api';
-const API_TIMEOUT = parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT) || 10000;
+const API_TIMEOUT = parseInt(process.env.EXPO_PUBLIC_API_TIMEOUT) || 5000;
 
-// Token storage keys
-const TOKEN_KEY = 'auth_token';
+const TOKEN_KEY = 'medapp_token';
 
-/**
- * Get stored auth token
- */
 export const getToken = async () => {
     try {
-        return await AsyncStorage.getItem(TOKEN_KEY);
+        const raw = await AsyncStorage.getItem(TOKEN_KEY);
+        if (raw == null) return null;
+        return JSON.parse(raw);
     } catch (error) {
         console.error('Error getting token:', error);
         return null;
@@ -29,7 +27,7 @@ export const getToken = async () => {
 export const setToken = async (token) => {
     try {
         if (token) {
-            await AsyncStorage.setItem(TOKEN_KEY, token);
+            await AsyncStorage.setItem(TOKEN_KEY, JSON.stringify(token));
         } else {
             await AsyncStorage.removeItem(TOKEN_KEY);
         }
