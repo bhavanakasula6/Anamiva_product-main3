@@ -1,7 +1,14 @@
 const Appointment = require('../models/appointment');
 const Doctor = require('../models/doctor');
 const MedicalRecord = require('../models/medicalrecord');
+const Consent = require('../models/consent');
 const crypto = require('crypto');
+
+const parseOptionalDate = (value) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
 
 // Robust helper to resolve name from user object
 const getSafeName = (user) => {
@@ -228,6 +235,7 @@ exports.getAppointments = async (req, res) => {
       });
 
       const bulkOps = [];
+      const expiredAppointmentIds = [];
       for (const apt of expiredAppointments) {
         // Build the full appointment datetime from date + time
         const aptDate = new Date(apt.date);
@@ -239,6 +247,7 @@ exports.getAppointments = async (req, res) => {
         aptDate.setMinutes(aptDate.getMinutes() + 30);
 
         if (aptDate < now) {
+          expiredAppointmentIds.push(apt._id);
           bulkOps.push({
             updateOne: {
               filter: { _id: apt._id },
@@ -250,6 +259,19 @@ exports.getAppointments = async (req, res) => {
 
       if (bulkOps.length > 0) {
         const result = await Appointment.bulkWrite(bulkOps);
+        await Consent.updateMany(
+          {
+            appointmentId: { $in: expiredAppointmentIds },
+            type: 'consultation',
+            status: 'active',
+          },
+          {
+            $set: {
+              status: 'expired',
+              expiresAt: new Date(),
+            },
+          }
+        );
         console.log(`[getAppointments] Auto-expired ${result.modifiedCount} past appointments`);
       }
     } catch (expireErr) {
@@ -366,6 +388,22 @@ exports.updateStatus = async (req, res) => {
 
     await appointment.save();
 
+    if (status === 'completed' || status === 'cancelled') {
+      await Consent.updateMany(
+        {
+          appointmentId: appointment._id,
+          type: 'consultation',
+          status: 'active',
+        },
+        {
+          $set: {
+            status: 'expired',
+            expiresAt: new Date(),
+          },
+        }
+      );
+    }
+
     // Notify patient via socket so their UI updates in real-time
     const { getIO } = require('../sockets/socket');
     try {
@@ -428,6 +466,20 @@ exports.cancelAppointment = async (req, res) => {
     }
 
     await appointment.save();
+
+    await Consent.updateMany(
+      {
+        appointmentId: appointment._id,
+        type: 'consultation',
+        status: 'active',
+      },
+      {
+        $set: {
+          status: 'expired',
+          expiresAt: new Date(),
+        },
+      }
+    );
 
     try {
       const { getIO } = require('../sockets/socket');
@@ -526,7 +578,7 @@ exports.addNotes = async (req, res) => {
 ========================= */
 exports.createPrescription = async (req, res) => {
   try {
-    const { medications, diagnosis, notes } = req.body;
+    const { medications, diagnosis, notes, recordDate } = req.body;
     const appointment = await Appointment.findById(req.params.appointmentId);
 
     if (!appointment) {
@@ -537,6 +589,18 @@ exports.createPrescription = async (req, res) => {
     const doctorProfile = await Doctor.findOne({ userId: req.user.id });
     if (!doctorProfile || appointment.doctorId.toString() !== doctorProfile._id.toString()) {
       return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    const existingPrescription = await MedicalRecord.findOne({
+      appointmentId: appointment._id,
+      type: 'prescription',
+    });
+    if (existingPrescription) {
+      return res.status(409).json({
+        success: false,
+        error: 'PRESCRIPTION_ALREADY_EXISTS',
+        message: 'A prescription already exists for this appointment',
+      });
     }
 
     // Build prescription description from medications
@@ -552,11 +616,13 @@ exports.createPrescription = async (req, res) => {
       patientId: appointment.patientId,
       doctorId: doctorProfile._id,
       appointmentId: appointment._id,
-      title: `Prescription - ${new Date().toLocaleDateString()}`,
+      title: `Prescription - ${(parseOptionalDate(recordDate) || new Date()).toLocaleDateString()}`,
       description: prescriptionDesc || 'Prescription',
       type: 'prescription',
       diagnosis: diagnosis || '',
       notes: notes || '',
+      recordDate: parseOptionalDate(recordDate) || new Date(),
+      medications: medications || [],
       status: 'verified',
     });
 
@@ -565,7 +631,52 @@ exports.createPrescription = async (req, res) => {
       prescription: {
         id: record._id.toString(),
         ...record.toObject(),
+        date: record.recordDate || record.createdAt,
         medications: medications || [],
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* =========================
+   GET PRESCRIPTION BY APPOINTMENT
+========================= */
+exports.getPrescription = async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.appointmentId);
+
+    if (!appointment) {
+      return res.status(404).json({ success: false, message: 'Appointment not found' });
+    }
+
+    if (req.user.role === 'patient' && appointment.patientId.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (req.user.role === 'doctor') {
+      const doctorProfile = await Doctor.findOne({ userId: req.user.id });
+      if (!doctorProfile || appointment.doctorId.toString() !== doctorProfile._id.toString()) {
+        return res.status(403).json({ success: false, message: 'Not authorized' });
+      }
+    }
+
+    const prescription = await MedicalRecord.findOne({
+      appointmentId: appointment._id,
+      type: 'prescription',
+    }).sort({ createdAt: -1 });
+
+    if (!prescription) {
+      return res.json({ success: true, prescription: null });
+    }
+
+    res.json({
+      success: true,
+      prescription: {
+        id: prescription._id.toString(),
+        ...prescription.toObject(),
+        date: prescription.recordDate || prescription.createdAt,
       },
     });
   } catch (err) {

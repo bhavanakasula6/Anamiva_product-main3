@@ -1,13 +1,36 @@
 const Consent = require("../models/consent");
 const AccessRequest = require("../models/accessrequest");
 const Doctor = require("../models/doctor");
+const Appointment = require("../models/appointment");
+
+const resolveDoctorId = async (doctorId) => {
+  if (!doctorId) return doctorId;
+  const byProfileId = await Doctor.findById(doctorId);
+  if (byProfileId) return byProfileId._id;
+
+  const byUserId = await Doctor.findOne({ userId: doctorId });
+  return byUserId?._id || doctorId;
+};
 
 /* =========================
    GET CONSENTS (Patient)
 ========================= */
 exports.getConsents = async (req, res) => {
   try {
-    const consents = await Consent.find({ patientId: req.user.id, status: "active" })
+    const filter = { status: "active" };
+
+    if (req.user.role === "doctor") {
+      const doctorProfile = await Doctor.findOne({ userId: req.user.id });
+      if (!doctorProfile) {
+        return res.json({ success: true, consents: [] });
+      }
+      filter.doctorId = doctorProfile._id;
+    } else {
+      filter.patientId = req.user.id;
+    }
+
+    const consents = await Consent.find(filter)
+      .populate("patientId", "name fullName firstName lastName dateOfBirth gender avatar profilePicture")
       .populate({ path: "doctorId", populate: { path: "userId", select: "name fullName" } })
       .populate("appointmentId");
 
@@ -22,7 +45,24 @@ exports.getConsents = async (req, res) => {
 ========================= */
 exports.createConsent = async (req, res) => {
   try {
-    const { doctorId, appointmentId, type = "consultation" } = req.body;
+    if (req.user.role !== "patient") {
+      return res.status(403).json({ success: false, message: "Only patients can share medical history" });
+    }
+
+    const { appointmentId, type = "consultation" } = req.body;
+    const doctorId = await resolveDoctorId(req.body.doctorId);
+
+    if (type === "consultation") {
+      const appointment = await Appointment.findById(appointmentId);
+      if (
+        !appointment ||
+        appointment.patientId.toString() !== req.user.id ||
+        appointment.doctorId.toString() !== doctorId.toString() ||
+        appointment.status !== "upcoming"
+      ) {
+        return res.status(400).json({ success: false, message: "Consultation access requires an upcoming appointment" });
+      }
+    }
 
     // Check if consent already exists
     const existing = await Consent.findOne({
@@ -95,9 +135,9 @@ exports.revokeConsent = async (req, res) => {
 ========================= */
 exports.revokeExtendedConsent = async (req, res) => {
   try {
-    const { patientId, doctorId } = req.body;
+    const doctorId = await resolveDoctorId(req.body.doctorId);
     const consent = await Consent.findOne({
-      patientId: patientId || req.user.id,
+      patientId: req.user.id,
       doctorId,
       type: "extended",
       status: "active",
@@ -120,12 +160,18 @@ exports.revokeExtendedConsent = async (req, res) => {
 ========================= */
 exports.checkAccess = async (req, res) => {
   try {
-    const { doctorId, patientId, appointmentId } = req.query;
+    const { patientId, appointmentId } = req.query;
+    const doctorId = await resolveDoctorId(req.query.doctorId);
     const pid = patientId || req.user.id;
 
     const filter = { patientId: pid, status: "active" };
     if (doctorId) filter.doctorId = doctorId;
-    if (appointmentId) filter.appointmentId = appointmentId;
+    if (appointmentId) {
+      filter.$or = [
+        { type: "extended" },
+        { type: "consultation", appointmentId },
+      ];
+    }
 
     const consent = await Consent.findOne(filter);
 
@@ -143,11 +189,23 @@ exports.checkAccess = async (req, res) => {
     const pendingRequest = await AccessRequest.findOne({
       patientId: pid,
       ...(doctorId ? { doctorId } : {}),
+      ...(appointmentId ? { appointmentId } : {}),
       status: "pending",
     });
 
     if (pendingRequest) {
       return res.json({ success: true, status: "PENDING", type: null, requestId: pendingRequest._id });
+    }
+
+    const deniedRequest = await AccessRequest.findOne({
+      patientId: pid,
+      ...(doctorId ? { doctorId } : {}),
+      ...(appointmentId ? { appointmentId } : {}),
+      status: "denied",
+    }).sort({ respondedAt: -1, updatedAt: -1 });
+
+    if (deniedRequest) {
+      return res.json({ success: true, status: "DENIED", type: null, requestId: deniedRequest._id });
     }
 
     res.json({ success: true, status: "NO_ACCESS", type: null });
@@ -161,15 +219,34 @@ exports.checkAccess = async (req, res) => {
 ========================= */
 exports.requestAccess = async (req, res) => {
   try {
+    if (req.user.role !== "doctor") {
+      return res.status(403).json({ success: false, message: "Only doctors can request medical history access" });
+    }
+
     const { patientId, appointmentId } = req.body;
 
     const doctorProfile = await Doctor.findOne({ userId: req.user.id });
     if (!doctorProfile) return res.status(400).json({ success: false, message: "Doctor profile not found" });
 
+    const appointment = await Appointment.findById(appointmentId);
+    if (
+      !appointment ||
+      appointment.patientId.toString() !== patientId ||
+      appointment.doctorId.toString() !== doctorProfile._id.toString() ||
+      appointment.status !== "upcoming"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "APPOINTMENT_NOT_UPCOMING",
+        message: "Access can only be requested for an upcoming appointment",
+      });
+    }
+
     // Check for existing pending request
     const existing = await AccessRequest.findOne({
       doctorId: doctorProfile._id,
       patientId,
+      appointmentId,
       status: "pending",
     });
 
@@ -235,7 +312,7 @@ exports.approveRequest = async (req, res) => {
     await request.save();
 
     // Auto-create consent
-    await Consent.create({
+    const consent = await Consent.create({
       patientId: req.user.id,
       doctorId: request.doctorId,
       appointmentId: request.appointmentId,
@@ -250,6 +327,43 @@ exports.approveRequest = async (req, res) => {
       io.to(`user_${request.doctorUserId.toString()}`).emit("access-request-approved", {
         requestId: request._id,
         patientId: req.user.id,
+        appointmentId: request.appointmentId,
+      });
+    } catch (socketErr) {
+      console.warn("Socket emit failed:", socketErr.message);
+    }
+
+    res.json({ success: true, request, consent });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+/* =========================
+   CANCEL REQUEST (Doctor)
+========================= */
+exports.cancelRequest = async (req, res) => {
+  try {
+    const request = await AccessRequest.findById(req.params.requestId);
+    if (!request) return res.status(404).json({ success: false, message: "Request not found" });
+
+    const doctorProfile = await Doctor.findOne({ userId: req.user.id });
+    if (!doctorProfile || request.doctorId.toString() !== doctorProfile._id.toString()) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    if (request.status !== "pending") {
+      return res.status(400).json({ success: false, message: "Only pending requests can be cancelled" });
+    }
+
+    request.status = "cancelled";
+    request.respondedAt = new Date();
+    await request.save();
+
+    try {
+      const { getIO } = require("../sockets/socket");
+      getIO().to(`user_${request.patientId.toString()}`).emit("access-request-cancelled", {
+        requestId: request._id,
         appointmentId: request.appointmentId,
       });
     } catch (socketErr) {
@@ -276,6 +390,17 @@ exports.denyRequest = async (req, res) => {
     request.status = "denied";
     request.respondedAt = new Date();
     await request.save();
+
+    try {
+      const { getIO } = require("../sockets/socket");
+      getIO().to(`user_${request.doctorUserId.toString()}`).emit("access-request-denied", {
+        requestId: request._id,
+        patientId: req.user.id,
+        appointmentId: request.appointmentId,
+      });
+    } catch (socketErr) {
+      console.warn("Socket emit failed:", socketErr.message);
+    }
 
     res.json({ success: true, request });
   } catch (err) {

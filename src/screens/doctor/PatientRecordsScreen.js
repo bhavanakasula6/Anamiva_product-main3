@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import {
+  Alert,
   View,
   Text,
   FlatList,
@@ -35,6 +36,7 @@ const PatientRecordsScreen = ({ route, navigation }) => {
   const [access, setAccess] = useState({ status: ACCESS_STATUS.NO_ACCESS, type: null });
   const accessState = access.status;
   const consentType = access.type;
+  const activeRequestId = access.requestId || requestId || null;
 
   useFocusEffect(
     React.useCallback(() => {
@@ -69,8 +71,8 @@ const PatientRecordsScreen = ({ route, navigation }) => {
     });
 
     if (res?.success) {
-      alert('Access request sent to patient');
-      navigation.goBack();
+      await validateAndLoad();
+      Alert.alert('Request Sent', 'The patient can now approve or deny the medical record access request.');
       return;
     }
     switch (res?.error) {
@@ -78,20 +80,32 @@ const PatientRecordsScreen = ({ route, navigation }) => {
         alert('You already have access to this patient’s records.');
         break;
       case 'DUPLICATE_PENDING_REQUEST':
-        alert('An access request is already pending.');
+      case 'REQUEST_ALREADY_PENDING':
+        await validateAndLoad();
+        Alert.alert('Request Pending', 'An access request is already pending.');
         break;
       case 'APPOINTMENT_NOT_UPCOMING':
         alert('Access can only be requested for upcoming appointments.');
         break;
       default:
-        alert('Unable to request access at this time.');
+        Alert.alert('Error', res?.message || 'Unable to request access at this time.');
     }
   };
 
   const handleCancelRequest = async () => {
-    await cancelAccessRequest(requestId);
+    if (!activeRequestId) {
+      Alert.alert('Error', 'The pending request could not be identified. Refresh and try again.');
+      return;
+    }
 
-    navigation.goBack();
+    const response = await cancelAccessRequest(activeRequestId);
+    if (!response?.success) {
+      Alert.alert('Error', response?.message || 'Unable to cancel the access request.');
+      return;
+    }
+
+    await validateAndLoad();
+    Alert.alert('Request Cancelled', 'The pending access request was cancelled.');
   };
 
 
@@ -108,6 +122,7 @@ const PatientRecordsScreen = ({ route, navigation }) => {
               size="sm"
               variant="outline"
               onPress={handleCancelRequest}
+              disabled={!activeRequestId}
             >
               Cancel Request
             </Button>
@@ -172,7 +187,7 @@ const PatientRecordsScreen = ({ route, navigation }) => {
     >
       <Text style={styles.title}>{item.title}</Text>
       <Text style={styles.sub}>
-        {new Date(item.date).toDateString()}
+        {new Date(item.recordDate || item.date || item.createdAt).toDateString()}
       </Text>
       <Text style={styles.badge}>{item.status}</Text>
     </Card>

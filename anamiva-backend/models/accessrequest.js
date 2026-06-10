@@ -6,7 +6,7 @@ const accessRequestSchema = new mongoose.Schema(
     doctorUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     patientId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Appointment" },
-    status: { type: String, enum: ["pending", "approved", "denied"], default: "pending" },
+    status: { type: String, enum: ["pending", "approved", "denied", "cancelled"], default: "pending" },
     respondedAt: Date,
   },
   { timestamps: true }

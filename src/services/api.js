@@ -405,7 +405,29 @@ export const medicalRecordsAPI = {
 
   // Upload medical record
   uploadRecord: async (recordData) => {
-    const response = await httpClient.post('/medical-records', recordData);
+    const formData = new FormData();
+    formData.append('title', recordData.title || '');
+    formData.append('type', recordData.type || 'other');
+    if (recordData.description) formData.append('description', recordData.description);
+    if (recordData.recordDate) formData.append('recordDate', recordData.recordDate);
+
+    const files = recordData.files || (recordData.file ? [recordData.file] : []);
+    files.forEach((file, index) => {
+      const name = file.name || `record_${Date.now()}_${index}.jpg`;
+      const ext = name.split('.').pop()?.toLowerCase();
+      const type =
+        file.mimeType ||
+        (file.type?.includes('/') ? file.type : null) ||
+        (ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : 'image/jpeg');
+
+      formData.append('files', {
+        uri: file.uri,
+        name,
+        type,
+      });
+    });
+
+    const response = await httpClient.post('/medical-records', formData);
     return response;
   },
 
@@ -423,7 +445,7 @@ export const medicalRecordsAPI = {
 
   // Load pending records for doctor verification
   loadPendingRecords: async () => {
-    const response = await httpClient.get('/medical-records?status=pending');
+    const response = await httpClient.get('/medical-records/pending');
     return response;
   },
 
@@ -609,9 +631,9 @@ export const consentAPI = {
     try {
       const response = await httpClient.get(`/consents/access?${params.toString()}`);
       return response;
-    } catch (error) {
+    } catch (_error) {
       // Return default status if endpoint doesn't exist
-      return { success: true, status: 'no_access', type: null };
+      return { success: true, status: 'NO_ACCESS', type: null };
     }
   },
 };
@@ -645,6 +667,12 @@ export const accessRequestAPI = {
   // Deny access request
   denyRequest: async (requestId) => {
     const response = await httpClient.put(`/access-requests/${requestId}/deny`, {});
+    return response;
+  },
+
+  // Cancel access request
+  cancelRequest: async (requestId) => {
+    const response = await httpClient.put(`/access-requests/${requestId}/cancel`, {});
     return response;
   },
 };

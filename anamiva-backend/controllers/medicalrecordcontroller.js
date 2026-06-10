@@ -1,6 +1,20 @@
 const MedicalRecord = require('../models/medicalrecord');
 const Medication = require('../models/medication');
+const Doctor = require('../models/doctor');
+const Consent = require('../models/consent');
 const path = require('path');
+
+const parseOptionalDate = (value) => {
+  if (!value) return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const getDoctorProfileId = async (user) => {
+  if (user.doctorInfo) return user.doctorInfo;
+  const doctorProfile = await Doctor.findOne({ userId: user.id });
+  return doctorProfile?._id || user.id;
+};
 
 /**
  * Robustly extract a name from a user object
@@ -30,6 +44,7 @@ const transformMedicalRecord = (rec) => {
   return {
     ...recObj,
     id: recObj._id.toString(),
+    date: recObj.recordDate || recObj.createdAt,
     patient: recObj.patientId ? {
       id: recObj.patientId._id?.toString() || recObj.patientId.toString(),
       name: getSafeName(recObj.patientId),
@@ -76,6 +91,7 @@ exports.createMedicalRecord = async (req, res) => {
       type: req.body.type || 'other',
       fileUrl: fileUrls[0] || req.body.fileUrl || '',
       files: fileUrls,
+      recordDate: parseOptionalDate(req.body.recordDate) || new Date(),
       status: 'pending',
     });
 
@@ -96,13 +112,44 @@ exports.createMedicalRecord = async (req, res) => {
 exports.getMedicalRecords = async (req, res) => {
   try {
     let queryPatientId = req.user.id;
+    const filter = {};
 
     // If a doctor requests records for a specific patient
     if (req.query.patientId && req.user.role === 'doctor') {
       queryPatientId = req.query.patientId;
+
+      const doctorProfile = await Doctor.findOne({ userId: req.user.id });
+      if (!doctorProfile) {
+        return res.status(403).json({ success: false, message: 'Doctor profile not found' });
+      }
+
+      const consent = await Consent.findOne({
+        patientId: queryPatientId,
+        doctorId: doctorProfile._id,
+        status: 'active',
+        $or: [
+          { expiresAt: { $exists: false } },
+          { expiresAt: null },
+          { expiresAt: { $gt: new Date() } },
+        ],
+      });
+
+      if (!consent) {
+        return res.status(403).json({ success: false, message: 'Patient has not shared medical history access' });
+      }
     }
 
-    const records = await MedicalRecord.find({ patientId: queryPatientId })
+    filter.patientId = queryPatientId;
+
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
+    if (req.query.type) {
+      filter.type = req.query.type;
+    }
+
+    const records = await MedicalRecord.find(filter)
       .populate('patientId')
       .populate({
         path: 'doctorId',
@@ -156,8 +203,8 @@ exports.verifyRecord = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Record not found' });
     }
 
-    record.status = 'approved';
-    record.doctorId = req.user.id;
+    record.status = 'verified';
+    record.doctorId = await getDoctorProfileId(req.user);
     await record.save();
 
     const updatedRecord = await MedicalRecord.findById(record._id)
@@ -193,7 +240,7 @@ exports.rejectRecord = async (req, res) => {
 
     record.status = 'rejected';
     record.rejectionReason = req.body.reason || '';
-    record.doctorId = req.user.id;
+    record.doctorId = await getDoctorProfileId(req.user);
     await record.save();
 
     const updatedRecord = await MedicalRecord.findById(record._id)
@@ -219,7 +266,7 @@ exports.rejectRecord = async (req, res) => {
 ========================= */
 exports.transcribeRecord = async (req, res) => {
   try {
-    const { medications, diagnosis, notes } = req.body;
+    const { medications, diagnosis, notes, recordDate } = req.body;
 
     const record = await MedicalRecord.findById(req.params.recordId);
     if (!record) {
@@ -234,7 +281,9 @@ exports.transcribeRecord = async (req, res) => {
     record.status = 'transcribed';
     record.diagnosis = diagnosis || '';
     record.notes = notes || '';
-    record.doctorId = req.user.doctorInfo || req.user.id;
+    record.recordDate = parseOptionalDate(recordDate) || record.recordDate || new Date();
+    record.medications = Array.isArray(medications) ? medications : [];
+    record.doctorId = await getDoctorProfileId(req.user);
     await record.save();
 
     // Auto-create medications from transcription
@@ -247,7 +296,7 @@ exports.transcribeRecord = async (req, res) => {
           name: med.name,
           dosage: med.dosage,
           frequency: med.frequency,
-          startDate: med.startDate || new Date(),
+          startDate: med.startDate || record.recordDate || new Date(),
           endDate: med.endDate || null,
         });
         createdMedications.push(medication);
@@ -280,9 +329,18 @@ exports.updatePrescription = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Only doctors can update prescriptions' });
     }
 
+    const updates = { ...req.body };
+    if (updates.recordDate) {
+      updates.recordDate = parseOptionalDate(updates.recordDate);
+    }
+    if (updates.date && !updates.recordDate) {
+      updates.recordDate = parseOptionalDate(updates.date);
+      delete updates.date;
+    }
+
     const record = await MedicalRecord.findByIdAndUpdate(
       req.params.recordId,
-      req.body,
+      updates,
       { new: true }
     ).populate('patientId').populate({
       path: 'doctorId',

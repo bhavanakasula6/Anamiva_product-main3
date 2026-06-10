@@ -13,7 +13,6 @@ import {
   notificationAPI,
   consentAPI,
   accessRequestAPI,
-  patientAPI,
 } from '../services/api';
 import { useAuth } from './AuthContext';
 import { APPOINTMENT_STATUS, CONSENT_STATUS, CONSENT_TYPES, ACCESS_STATUS } from '../data/constants';
@@ -39,6 +38,8 @@ export const DoctorProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [lastLocation, setLastLocation] = useState(null);
 
+  const getCurrentDoctorId = () => user?.doctorProfileId || user?.doctorInfo || user?._id || user?.id;
+
   // Load doctor data on mount
   useEffect(() => {
     if (user && user.role === 'doctor') {
@@ -61,6 +62,7 @@ export const DoctorProvider = ({ children }) => {
       // Avoid duplicate listeners
       sock.off('consent-granted');
       sock.off('access-request-approved');
+      sock.off('access-request-denied');
       sock.off('appointment-booked');
       sock.off('appointment-updated');
       sock.off('emergency-created');
@@ -73,6 +75,10 @@ export const DoctorProvider = ({ children }) => {
       });
       sock.on('access-request-approved', (data) => {
         console.log('[DoctorContext] Access request approved by patient:', data);
+        loadDoctorData();
+      });
+      sock.on('access-request-denied', (data) => {
+        console.log('[DoctorContext] Access request denied by patient:', data);
         loadDoctorData();
       });
       sock.on('appointment-booked', (data) => {
@@ -128,6 +134,7 @@ export const DoctorProvider = ({ children }) => {
       if (sock) {
         sock.off('consent-granted');
         sock.off('access-request-approved');
+        sock.off('access-request-denied');
         sock.off('appointment-booked');
         sock.off('appointment-updated');
         sock.off('emergency-created');
@@ -482,7 +489,7 @@ export const DoctorProvider = ({ children }) => {
   };
 
   const getPatientAccessStatus = async ({ patientId, appointmentId }) => {
-    const doctorId = user.doctorProfileId || user.id || user._id;
+    const doctorId = getCurrentDoctorId();
     const res = await consentAPI.getAccessStatus({
       patientId,
       doctorId,
@@ -496,6 +503,8 @@ export const DoctorProvider = ({ children }) => {
     return {
       status: res.status,
       type: res.type,
+      requestId: res.requestId || null,
+      consentId: res.consentId || null,
     };
   };
 
@@ -536,17 +545,38 @@ export const DoctorProvider = ({ children }) => {
   const getAccessStatus = async ({ patientId, appointmentId = null }) => {
     const res = await consentAPI.getAccessStatus({
       patientId,
-      doctorId: user.id,
+      doctorId: getCurrentDoctorId(),
       appointmentId,
     });
 
     return res.success
-      ? { status: res.status, type: res.type }
+      ? {
+          status: res.status,
+          type: res.type,
+          requestId: res.requestId || null,
+          consentId: res.consentId || null,
+        }
       : { status: ACCESS_STATUS.NO_ACCESS, type: null };
   };
 
   const getPatientsWithAccess = async () => {
     const map = new Map();
+    const getId = value => value?._id || value?.id || value;
+    const getName = patient =>
+      patient?.fullName ||
+      patient?.name ||
+      (patient?.firstName ? `${patient.firstName} ${patient.lastName || ''}`.trim() : '') ||
+      'Patient';
+    const getAge = dateOfBirth => {
+      if (!dateOfBirth) return '-';
+      const birthDate = new Date(dateOfBirth);
+      if (Number.isNaN(birthDate.getTime())) return '-';
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const month = today.getMonth() - birthDate.getMonth();
+      if (month < 0 || (month === 0 && today.getDate() < birthDate.getDate())) age -= 1;
+      return age;
+    };
 
     // 1️⃣ UPCOMING appointments
     const aptRes = await appointmentAPI.getAppointments({
@@ -557,7 +587,7 @@ export const DoctorProvider = ({ children }) => {
       for (const apt of aptRes.appointments) {
         const access = await consentAPI.getAccessStatus({
           patientId: apt.patientId,
-          doctorId: user.id,
+          doctorId: getCurrentDoctorId(),
           appointmentId: apt.id,
         });
 
@@ -588,16 +618,15 @@ export const DoctorProvider = ({ children }) => {
       );
 
       for (const consent of extended) {
-        if (map.has(consent.patientId)) continue;
+        const patient = consent.patientId;
+        const patientId = getId(patient);
+        if (!patientId || map.has(patientId)) continue;
 
-        const patientRes = await patientAPI.getPatientById(consent.patientId);
-        if (!patientRes.success) continue;
-
-        map.set(consent.patientId, {
-          id: consent.patientId,
-          name: patientRes.patient.fullName,
-          age: patientRes.patient.age,
-          gender: patientRes.patient.gender,
+        map.set(patientId, {
+          id: patientId,
+          name: getName(patient),
+          age: getAge(patient?.dateOfBirth),
+          gender: patient?.gender || '-',
           appointmentId: null,
           access: { status: ACCESS_STATUS.GRANTED, type: CONSENT_TYPES.EXTENDED },
         });

@@ -34,17 +34,13 @@ import {
   APPOINTMENT_STATUS,
   CALL_STATUS,
 } from '../../data/constants';
-import { appointmentAPI } from '../../services/api';
+import { appointmentAPI, medicalRecordAPI } from '../../services/api';
 
 const AppointmentDetailsScreen = ({ route, navigation }) => {
   const { appointmentId, refresh } = route.params;
   const { user } = useAuth();
 
-  if (!user) {
-    return <Loading fullScreen text="Signing out..." />;
-  }
-
-  const role = user.role;
+  const role = user?.role;
   const isPatient = role === 'patient';
   const isDoctor = role === 'doctor';
 
@@ -64,7 +60,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     updateAppointmentStatus,
     getPatientAccessStatus,
     requestAccess,
-    getAppointmentPrescription,
+    cancelAccessRequest,
   } = useDoctor();
 
   const [loading, setLoading] = useState(true);
@@ -103,10 +99,10 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   }, [appointmentId, refresh]);
 
   useEffect(() => {
-    if (!isDoctor || !appointment?.id) return;
+    if (!appointment?.id) return;
 
     (async () => {
-      const res = await getAppointmentPrescription(appointment.id);
+      const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
       if (res?.success) {
         setPrescription(res.prescription);
         if (res.prescription && !appointment.prescriptionId) {
@@ -117,7 +113,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
         }
       }
     })();
-  }, [appointment?.id, isDoctor]);
+  }, [appointment?.id]);
 
   useEffect(() => {
     if (!isDoctor || !appointment || isCancelled || isCompleted) return;
@@ -135,10 +131,14 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     if (!isPatient || !appointment) return null;
 
     return requests.find(
-      r =>
-        r.doctorId === appointment.doctorId &&
-        r.appointmentId === appointment.id &&
+      r => {
+        const requestDoctorId = r.doctorId?._id || r.doctorId?.id || r.doctorId;
+        const requestAppointmentId = r.appointmentId?._id || r.appointmentId?.id || r.appointmentId;
+
+        return requestDoctorId === appointment.doctorId &&
+        requestAppointmentId === appointment.id &&
         r.status === ACCESS_REQUEST_STATUS.PENDING
+      }
     );
   }, [requests, appointment, isPatient]);
 
@@ -160,8 +160,9 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
           text: 'Revoke',
           style: 'destructive',
           onPress: async () => {
-            if (!activeConsent?.id) return;
-            await revokeConsent({ consentId: activeConsent.id });
+            const consentId = activeConsent?.id || activeConsent?._id;
+            if (!consentId) return;
+            await revokeConsent({ consentId });
             await checkConsent(appointmentId);
           },
         },
@@ -261,12 +262,14 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     Alert.alert('Request Sent', 'Your consultation access request has been sent to the patient.');
   };
 
+  if (!user) {
+    return <Loading fullScreen text="Signing out..." />;
+  }
+
   if (loading || !appointment) {
     return <Loading fullScreen text="Loading appointment..." />;
   }
-  const canViewPrescription =
-    !!prescription &&
-    (isDoctor || (isPatient && isCompleted));
+  const canViewPrescription = !!prescription && (isDoctor || isPatient);
 
 
   return (
@@ -397,6 +400,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                           onPress={async () => {
                             await denyRequest(doctorRequest);
                             await loadRequests();
+                            await checkConsent(appointment.id);
 
                             Alert.alert(
                               'Access Denied',
@@ -409,11 +413,16 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                       </>
                     )}
 
-                    {accessStatus?.status === ACCESS_STATUS.NO_ACCESS && isUpcoming && (
+                    {(accessStatus?.status === ACCESS_STATUS.NO_ACCESS ||
+                      accessStatus?.status === ACCESS_STATUS.DENIED) && isUpcoming && (
                       <>
                         <View style={styles.accessRow}>
                           <Icon name="lock" size={14} color={colors.gray[500]} />
-                          <Text style={styles.accessMuted}>Not shared</Text>
+                          <Text style={styles.accessMuted}>
+                            {accessStatus?.status === ACCESS_STATUS.DENIED
+                              ? 'Previous request denied. You can still share directly.'
+                              : 'Not shared'}
+                          </Text>
                         </View>
                         <Button
                           onPress={shareAccess}
@@ -460,12 +469,39 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                     )}
 
                     {doctorAccessStatus?.status === ACCESS_STATUS.PENDING && isUpcoming && (
-                      <View style={styles.accessRow}>
-                        <Icon name="progress" size={14} color={colors.success[600]} />
-                        <Text style={styles.accessPending}>
-                          Access request pending
-                        </Text>
-                      </View>
+                      <>
+                        <View style={styles.accessRow}>
+                          <Icon name="progress" size={14} color={colors.success[600]} />
+                          <Text style={styles.accessPending}>
+                            Access request pending
+                          </Text>
+                        </View>
+                        <Button
+                          variant="outline"
+                          onPress={async () => {
+                            const requestId = doctorAccessStatus.requestId;
+                            if (!requestId) {
+                              Alert.alert('Error', 'The pending request could not be identified.');
+                              return;
+                            }
+
+                            const response = await cancelAccessRequest(requestId);
+                            if (!response?.success) {
+                              Alert.alert('Error', response?.message || 'Unable to cancel the request.');
+                              return;
+                            }
+
+                            const status = await getPatientAccessStatus({
+                              patientId: appointment.patientId,
+                              appointmentId: appointment.id,
+                            });
+                            setDoctorAccessStatus(status);
+                            Alert.alert('Request Cancelled', 'The access request was cancelled.');
+                          }}
+                        >
+                          Cancel Request
+                        </Button>
+                      </>
                     )}
 
                     {doctorAccessStatus?.status === ACCESS_STATUS.NO_ACCESS && isUpcoming && (
@@ -533,7 +569,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                               otherPartyName: appointment.patient?.name || 'Patient',
                             });
                           }
-                        } catch (err) {
+                        } catch (_err) {
                           Alert.alert('Error', 'Failed to start call');
                         }
                       }}
@@ -585,7 +621,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                               otherPartyName: appointment.doctor?.name || 'Doctor',
                             });
                           }
-                        } catch (err) {
+                        } catch (_err) {
                           Alert.alert('Error', 'Failed to join call');
                         }
                       }}

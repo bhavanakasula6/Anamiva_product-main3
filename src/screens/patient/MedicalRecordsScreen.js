@@ -73,7 +73,7 @@ const MedicalRecordsScreen = ({ navigation }) => {
             {record.title}
           </Text>
           <Text style={styles.recordDate}>
-            {new Date(record.date || record.createdAt).toLocaleDateString('en-US', {
+            {new Date(record.recordDate || record.date || record.createdAt).toLocaleDateString('en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
@@ -82,7 +82,7 @@ const MedicalRecordsScreen = ({ navigation }) => {
         </View>
 
         <Badge
-          variant={record.status === 'verified' ? 'success' : 'warning'}
+          variant={record.status === 'verified' || record.status === 'approved' ? 'success' : 'warning'}
           size="sm"
         >
           {record.status}

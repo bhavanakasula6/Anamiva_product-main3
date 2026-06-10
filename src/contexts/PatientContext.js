@@ -21,6 +21,7 @@ import socketService from '../services/socketService';
 const PatientContext = createContext(null);
 
 const getDoctorId = (doctor) => doctor?._id || doctor?.id;
+const getEntityId = (entity) => entity?._id || entity?.id || entity;
 
 const normalizeDoctor = (doctor) => {
   if (!doctor) return doctor;
@@ -87,6 +88,7 @@ export const PatientProvider = ({ children }) => {
 
       socket.off('appointment-updated');
       socket.off('consultation-access-requested');
+      socket.off('access-request-cancelled');
       socket.off('emergency-accepted');
       socket.off('emergency-status-updated');
       socket.off('connect', registerListeners);
@@ -101,6 +103,11 @@ export const PatientProvider = ({ children }) => {
         console.log('[PatientContext] Doctor requested consultation access:', data);
         loadRequests();
         loadNotifications();
+      });
+
+      socket.on('access-request-cancelled', (data) => {
+        console.log('[PatientContext] Doctor cancelled access request:', data);
+        loadRequests();
       });
 
       socket.on('emergency-accepted', (data) => {
@@ -142,6 +149,7 @@ export const PatientProvider = ({ children }) => {
       if (socket) {
         socket.off('appointment-updated');
         socket.off('consultation-access-requested');
+        socket.off('access-request-cancelled');
         socket.off('emergency-accepted');
         socket.off('emergency-status-updated');
         socket.off('connect', registerListeners);
@@ -553,9 +561,9 @@ export const PatientProvider = ({ children }) => {
         const consent = await consentAPI.getConsents();
         const match = consent.consents?.find(
           c =>
-            c.patientId === apt.patientId &&
-            c.doctorId === apt.doctorId &&
-            c.appointmentId === apt.id &&
+            getEntityId(c.patientId) === apt.patientId &&
+            getEntityId(c.doctorId) === apt.doctorId &&
+            getEntityId(c.appointmentId) === apt.id &&
             c.status === CONSENT_STATUS.ACTIVE
         );
 
@@ -616,7 +624,7 @@ export const PatientProvider = ({ children }) => {
 
 
   const loadRequests = async () => {
-    if (!user?.id) return;
+    if (!(user?.id || user?._id)) return;
     const res = await accessRequestAPI.getPendingRequests();
     if (res.success) {
       setRequests(res.requests || []);
@@ -629,12 +637,13 @@ export const PatientProvider = ({ children }) => {
     }
 
     try {
-      const res = await accessRequestAPI.approveRequest(req.id);
+      const requestId = req.id || req._id;
+      const res = await accessRequestAPI.approveRequest(requestId);
 
       if (!res.success) throw new Error(res.error);
 
       setActiveConsent(res.consent);
-      setRequests(prev => prev.filter(r => r.id !== req.id));
+      setRequests(prev => prev.filter(r => (r.id || r._id) !== requestId));
 
       return res.consent;
     } catch (error) {
@@ -645,11 +654,12 @@ export const PatientProvider = ({ children }) => {
 
   const denyRequest = async (req) => {
     try {
-      const res = await accessRequestAPI.denyRequest(req.id);
+      const requestId = req.id || req._id;
+      const res = await accessRequestAPI.denyRequest(requestId);
 
       if (!res.success) throw new Error(res.error);
 
-      setRequests(prev => prev.filter(r => r.id !== req.id));
+      setRequests(prev => prev.filter(r => (r.id || r._id) !== requestId));
       return true;
     } catch (error) {
       console.error('Deny request failed:', error);

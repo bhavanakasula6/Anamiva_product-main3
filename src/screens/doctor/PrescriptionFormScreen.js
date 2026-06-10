@@ -6,7 +6,7 @@
  * - Locked after appointment completion
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -44,6 +44,7 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
     const [saving, setSaving] = useState(false);
 
     const [prescriptionId, setPrescriptionId] = useState(null);
+    const [recordDate, setRecordDate] = useState(new Date().toISOString().slice(0, 10));
     const [diagnosis, setDiagnosis] = useState('');
     const [notes, setNotes] = useState('');
     const [medications, setMedications] = useState([
@@ -67,6 +68,11 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
 
             if (res?.success && res.prescription) {
                 setPrescriptionId(res.prescription.id);
+                setRecordDate(
+                    new Date(res.prescription.recordDate || res.prescription.date || res.prescription.createdAt)
+                        .toISOString()
+                        .slice(0, 10)
+                );
                 setDiagnosis(res.prescription.diagnosis || '');
                 setNotes(res.prescription.notes || '');
                 setMedications(
@@ -113,6 +119,11 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
             return;
         }
 
+        if (Number.isNaN(new Date(recordDate).getTime())) {
+            Alert.alert('Validation error', 'Enter prescription date in YYYY-MM-DD format');
+            return;
+        }
+
         const validMeds = medications.filter(
             m => m.name && m.dosage && m.frequency
         );
@@ -129,6 +140,7 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
         if (isEditMode) {
             // ✅ UPDATE
             res = await updatePrescription(prescriptionId, {
+                recordDate,
                 diagnosis,
                 notes,
                 medications: validMeds,
@@ -136,6 +148,7 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
         } else {
             // ✅ CREATE
             res = await createPrescription(appointmentId, {
+                recordDate,
                 diagnosis,
                 notes,
                 medications: validMeds,
@@ -174,6 +187,14 @@ const PrescriptionFormScreen = ({ route, navigation }) => {
                 {/* Diagnosis */}
                 <Card style={styles.card}>
                     <Text style={styles.section}>Diagnosis</Text>
+                    <Input
+                        label="Prescription Date"
+                        value={recordDate}
+                        onChangeText={setRecordDate}
+                        placeholder="YYYY-MM-DD"
+                        keyboardType="numbers-and-punctuation"
+                        editable={!isLocked}
+                    />
                     <Input
                         value={diagnosis}
                         onChangeText={setDiagnosis}

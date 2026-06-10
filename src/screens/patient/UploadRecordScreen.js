@@ -35,6 +35,7 @@ const UploadRecordScreen = ({ navigation }) => {
 
   const [type, setType] = useState('lab-report');
   const [title, setTitle] = useState('');
+  const [recordDate, setRecordDate] = useState(new Date().toISOString().slice(0, 10));
   const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -135,11 +136,17 @@ const UploadRecordScreen = ({ navigation }) => {
       return;
     }
 
+    if (Number.isNaN(new Date(recordDate).getTime())) {
+      Alert.alert('Invalid date', 'Please enter date in YYYY-MM-DD format');
+      return;
+    }
+
     setLoading(true);
 
     const res = await uploadMedicalRecord({
       type,
       title,
+      recordDate,
       file: selectedFile,
     });
 
@@ -172,6 +179,16 @@ const UploadRecordScreen = ({ navigation }) => {
             value={title}
             onChangeText={setTitle}
             placeholderTextColor={colors.gray[400]}
+          />
+
+          <Text style={styles.label}>Record Date</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="YYYY-MM-DD"
+            value={recordDate}
+            onChangeText={setRecordDate}
+            placeholderTextColor={colors.gray[400]}
+            keyboardType="numbers-and-punctuation"
           />
 
           {/* TYPE */}

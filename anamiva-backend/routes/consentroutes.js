@@ -11,6 +11,7 @@ const {
   getPendingRequests,
   approveRequest,
   denyRequest,
+  cancelRequest,
 } = require("../controllers/consentcontroller");
 
 // Consent routes (patient)
@@ -25,5 +26,6 @@ router.post("/access-requests", protect, requestAccess);
 router.get("/access-requests/pending", protect, getPendingRequests);
 router.put("/access-requests/:requestId/approve", protect, approveRequest);
 router.put("/access-requests/:requestId/deny", protect, denyRequest);
+router.put("/access-requests/:requestId/cancel", protect, cancelRequest);
 
 module.exports = router;

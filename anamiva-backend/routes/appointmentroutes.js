@@ -12,6 +12,7 @@ router.post('/:appointmentId/cancel', protect, appointmentController.cancelAppoi
 router.patch('/:appointmentId/reschedule', protect, appointmentController.rescheduleAppointment);
 router.post('/:appointmentId/notes', protect, authorize('doctor'), appointmentController.addNotes);
 router.post('/:appointmentId/prescription', protect, authorize('doctor'), appointmentController.createPrescription);
+router.get('/:appointmentId/prescription', protect, appointmentController.getPrescription);
 
 // Video call routes
 router.post('/:appointmentId/call/start', protect, authorize('doctor'), appointmentController.startCall);

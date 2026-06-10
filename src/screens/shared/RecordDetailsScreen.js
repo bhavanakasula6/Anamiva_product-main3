@@ -6,9 +6,11 @@
 import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,6 +19,7 @@ import { useDoctor } from '../../contexts/DoctorContext';
 import { usePatient } from '../../contexts/PatientContext';
 
 import {
+  Button,
   Card,
   EmptyState,
   Header,
@@ -38,10 +41,13 @@ const RecordDetailsScreen = ({ route, navigation }) => {
   const isPatientView = mode === 'PATIENT';
 
   const { medicalRecords, loadMedicalRecords } = usePatient();
-  const { getPatientMedicalRecords } = useDoctor();
+  const { getPatientMedicalRecords, updatePrescription, verifyRecord } = useDoctor();
 
   const [record, setRecord] = useState(null);
+  const [recordDateText, setRecordDateText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [savingDate, setSavingDate] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -55,17 +61,26 @@ const RecordDetailsScreen = ({ route, navigation }) => {
     // 🟢 Doctor verification mode → record already provided
     if (mode === 'DOCTOR_VERIFY' && passedRecord) {
       setRecord(passedRecord);
+      setRecordDateText(
+        new Date(passedRecord.recordDate || passedRecord.date || passedRecord.createdAt)
+          .toISOString()
+          .slice(0, 10)
+      );
       setLoading(false);
       return;
     }
 
     // 🟢 Patient view
     if (isPatientView) {
-      if (!medicalRecords.length) {
-        await loadMedicalRecords();
-      }
-      const found = medicalRecords.find(r => (r._id || r.id) === recordId);
+      const response = await loadMedicalRecords();
+      const latestRecords = response?.success ? response.records : medicalRecords;
+      const found = latestRecords.find(r => (r._id || r.id) === recordId);
       setRecord(found || null);
+      if (found) {
+        setRecordDateText(
+          new Date(found.recordDate || found.date || found.createdAt).toISOString().slice(0, 10)
+        );
+      }
       setLoading(false);
       return;
     }
@@ -75,9 +90,49 @@ const RecordDetailsScreen = ({ route, navigation }) => {
     if (response?.success) {
       const found = response.records.find(r => (r._id || r.id) === recordId);
       setRecord(found || null);
+      if (found) {
+        setRecordDateText(
+          new Date(found.recordDate || found.date || found.createdAt).toISOString().slice(0, 10)
+        );
+      }
     }
 
     setLoading(false);
+  };
+
+  const handleSaveDate = async () => {
+    if (Number.isNaN(new Date(recordDateText).getTime())) {
+      Alert.alert('Invalid date', 'Please enter date in YYYY-MM-DD format');
+      return;
+    }
+
+    setSavingDate(true);
+    const response = await updatePrescription(record.id || record._id, {
+      recordDate: recordDateText,
+    });
+    setSavingDate(false);
+
+    if (response?.success) {
+      setRecord(response.record);
+      Alert.alert('Saved', 'Record date updated');
+      return;
+    }
+
+    Alert.alert('Error', 'Failed to update record date');
+  };
+
+  const handleVerify = async () => {
+    setVerifying(true);
+    const response = await verifyRecord(record.id || record._id);
+    setVerifying(false);
+
+    if (response?.success) {
+      setRecord(response.record);
+      navigation.goBack();
+      return;
+    }
+
+    Alert.alert('Error', 'Failed to verify record');
   };
 
   if (loading) {
@@ -116,7 +171,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
               color={colors.gray[500]}
             />
             <Text style={styles.metaText}>
-              {new Date(record.date || record.createdAt).toDateString()}
+              {new Date(record.recordDate || record.date || record.createdAt).toDateString()}
             </Text>
           </View>
         </Card>
@@ -136,8 +191,8 @@ const RecordDetailsScreen = ({ route, navigation }) => {
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Medications</Text>
 
-            {record.medications.map(med => (
-              <View key={med.id} style={styles.medItem}>
+            {record.medications.map((med, index) => (
+              <View key={med.id || med._id || `${med.name}-${index}`} style={styles.medItem}>
                 <View style={styles.medHeader}>
                   <Icon
                     name="pills"
@@ -157,6 +212,37 @@ const RecordDetailsScreen = ({ route, navigation }) => {
                 </Text>
               </View>
             ))}
+          </Card>
+        )}
+
+        {mode === 'DOCTOR_VERIFY' && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Verification</Text>
+            <TextInput
+              style={styles.input}
+              value={recordDateText}
+              onChangeText={setRecordDateText}
+              placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.gray[400]}
+              keyboardType="numbers-and-punctuation"
+            />
+            <View style={styles.actionRow}>
+              <Button
+                variant="outline"
+                onPress={handleSaveDate}
+                loading={savingDate}
+                disabled={savingDate || verifying}
+              >
+                Save Date
+              </Button>
+              <Button
+                onPress={handleVerify}
+                loading={verifying}
+                disabled={savingDate || verifying}
+              >
+                Verify
+              </Button>
+            </View>
           </Card>
         )}
 
@@ -277,6 +363,22 @@ const styles = StyleSheet.create({
   noticeText: {
     fontSize: typography.fontSize.xs,
     color: colors.gray[600],
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    fontSize: typography.fontSize.base,
+    color: colors.gray[900],
+    marginBottom: spacing.md,
+  },
+
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
   },
 });
 

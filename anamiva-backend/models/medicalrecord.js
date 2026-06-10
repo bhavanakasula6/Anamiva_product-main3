@@ -20,6 +20,17 @@ const medicalRecordSchema = new mongoose.Schema(
     },
     diagnosis: String,
     notes: String,
+    recordDate: { type: Date, default: Date.now },
+    medications: [
+      {
+        name: String,
+        dosage: String,
+        frequency: String,
+        duration: String,
+        startDate: Date,
+        endDate: Date,
+      },
+    ],
     rejectionReason: String,
     appointmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Appointment' },
   },

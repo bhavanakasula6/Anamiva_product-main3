@@ -3,7 +3,8 @@
  * Review & verify patient-uploaded records
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -38,13 +39,21 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
 
-  useEffect(() => {
-    (async () => {
+  useFocusEffect(
+    React.useCallback(() => {
+      let active = true;
+
+      (async () => {
       setLoading(true);
       await loadPendingRecords();
-      setLoading(false);
-    })();
-  }, []);
+        if (active) setLoading(false);
+      })();
+
+      return () => {
+        active = false;
+      };
+    }, [])
+  );
 
   const handleVerify = async (recordId) => {
     setProcessingId(recordId);

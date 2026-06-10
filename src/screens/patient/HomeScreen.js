@@ -4,20 +4,71 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePatient } from '../../contexts/PatientContext';
 import { colors, typography, spacing, borderRadius, shadows } from '../../styles/theme';
-import { Card, Avatar, Badge, Loading } from '../../components/common';
+import { Card, Avatar, Badge, Button, Loading } from '../../components/common';
 import Icon from '../../components/Icon';
 import { APPOINTMENT_STATUS } from '../../data/constants';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
-  const { appointments, activeMedications, notifications, loading } = usePatient();
+  const {
+    appointments,
+    activeMedications,
+    notifications,
+    loading,
+    loadAppointments,
+    requests,
+    loadRequests,
+    approveRequest,
+    denyRequest,
+  } = usePatient();
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
   const unreadCount = notifications?.filter(n => !n.read).length || 0;
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadAppointments();
+      loadRequests();
+    }, [])
+  );
+
+  const getRequestDoctorName = request => {
+    const doctor = request.doctorId || {};
+    const doctorUser = doctor.userId || {};
+    return (
+      doctorUser.fullName ||
+      doctorUser.name ||
+      doctor.fullName ||
+      doctor.name ||
+      'Doctor'
+    );
+  };
+
+  const handleApproveRequest = async request => {
+    try {
+      await approveRequest(request);
+      await loadRequests();
+      await loadAppointments();
+      Alert.alert('Access Granted', `${getRequestDoctorName(request)} can now view the shared medical records.`);
+    } catch (_error) {
+      Alert.alert('Error', 'Unable to approve the access request.');
+    }
+  };
+
+  const handleDenyRequest = async request => {
+    const success = await denyRequest(request);
+    await loadRequests();
+
+    Alert.alert(
+      success ? 'Access Denied' : 'Error',
+      success ? 'The medical record access request was denied.' : 'Unable to deny the access request.'
+    );
+  };
 
   useEffect(() => {
     // Filter upcoming appointments using date + time
@@ -173,6 +224,40 @@ const HomeScreen = ({ navigation }) => {
           </Card>
         )}
       </View>
+
+      {requests.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Medical Record Access Requests</Text>
+          {requests.map(request => (
+            <Card key={request.id || request._id} style={styles.accessRequestCard}>
+              <View style={styles.accessRequestHeader}>
+                <Icon name="file-text" size={22} color={colors.primary[500]} />
+                <View style={styles.accessRequestInfo}>
+                  <Text style={styles.doctorName}>{getRequestDoctorName(request)}</Text>
+                  <Text style={styles.doctorSpecialty}>
+                    Requested access to your medical records
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.accessRequestActions}>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  onPress={() => handleDenyRequest(request)}
+                >
+                  Deny
+                </Button>
+                <Button
+                  size="sm"
+                  onPress={() => handleApproveRequest(request)}
+                >
+                  Approve
+                </Button>
+              </View>
+            </Card>
+          ))}
+        </View>
+      )}
 
       {/* Active Medications */}
       {activeMedications.length > 0 && (
@@ -337,6 +422,24 @@ const styles = StyleSheet.create({
   },
   appointmentCard: {
     marginBottom: spacing.md,
+  },
+  accessRequestCard: {
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+  },
+  accessRequestHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  accessRequestInfo: {
+    flex: 1,
+    marginLeft: spacing.md,
+  },
+  accessRequestActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
   appointmentHeader: {
     flexDirection: 'row',

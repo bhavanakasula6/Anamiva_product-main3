@@ -64,16 +64,21 @@ const createTimeout = (ms) => {
  */
 export const request = async (endpoint, options = {}) => {
     const url = `${API_BASE_URL}${endpoint}`;
+    const isFormData =
+        typeof FormData !== 'undefined' && options.body instanceof FormData;
 
     // Get auth token
     const token = await getToken();
 
     // Build headers
     const headers = {
-        'Content-Type': 'application/json',
         'ngrok-skip-browser-warning': 'true',
         ...options.headers,
     };
+
+    if (!isFormData) {
+        headers['Content-Type'] = 'application/json';
+    }
 
     if (token) {
         headers['Authorization'] = `Bearer ${token}`;
@@ -86,7 +91,7 @@ export const request = async (endpoint, options = {}) => {
     };
 
     // If body is an object, stringify it
-    if (options.body && typeof options.body === 'object') {
+    if (options.body && typeof options.body === 'object' && !isFormData) {
         fetchOptions.body = JSON.stringify(options.body);
     }
 
