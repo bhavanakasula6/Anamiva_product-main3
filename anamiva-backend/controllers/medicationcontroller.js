@@ -1,5 +1,38 @@
 const Medication = require('../models/medication');
 
+const emitMedicationUpdated = (patientId, medicationId) => {
+  try {
+    const { getIO } = require('../sockets/socket');
+    getIO().to(`user_${patientId.toString()}`).emit('medication-updated', {
+      patientId: patientId.toString(),
+      medicationId: medicationId?.toString?.() || null,
+    });
+  } catch (socketErr) {
+    console.warn('Socket emit failed:', socketErr.message);
+  }
+};
+
+const getSafeName = (user) => {
+  if (!user) return '';
+  return (
+    user.fullName ||
+    user.name ||
+    (user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : '') ||
+    ''
+  );
+};
+
+const transformMedication = (medication) => {
+  const med = medication.toObject ? medication.toObject() : medication;
+  const doctorUser = med.doctorId?.userId;
+
+  return {
+    ...med,
+    id: med._id?.toString?.() || med.id,
+    prescribedBy: getSafeName(doctorUser || med.doctorId) || 'Doctor',
+  };
+};
+
 /* =========================
    ADD MEDICATION
 ========================= */
@@ -9,6 +42,7 @@ exports.addMedication = async (req, res) => {
       patientId: req.user.id,
       ...req.body,
     });
+    emitMedicationUpdated(medication.patientId, medication._id);
     res.status(201).json({ success: true, medication });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -21,9 +55,9 @@ exports.addMedication = async (req, res) => {
 exports.getMedications = async (req, res) => {
   try {
     const medications = await Medication.find({ patientId: req.user.id })
-      .populate('doctorId')
+      .populate({ path: 'doctorId', populate: { path: 'userId' } })
       .sort({ createdAt: -1 });
-    res.json({ success: true, medications });
+    res.json({ success: true, medications: medications.map(transformMedication) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -36,7 +70,7 @@ exports.getMedications = async (req, res) => {
 exports.getActiveMedications = async (req, res) => {
   try {
     const now = new Date();
-    const medications = await Medication.find({
+    const filter = {
       patientId: req.user.id,
       active: { $ne: false },
       $or: [
@@ -44,11 +78,17 @@ exports.getActiveMedications = async (req, res) => {
         { endDate: { $exists: false } },
         { endDate: { $gte: now } },
       ],
-    })
-      .populate('doctorId')
+    };
+
+    if (req.user.role === 'doctor' && req.query.patientId) {
+      filter.patientId = req.query.patientId;
+    }
+
+    const medications = await Medication.find(filter)
+      .populate({ path: 'doctorId', populate: { path: 'userId' } })
       .sort({ startDate: -1 });
 
-    res.json({ success: true, medications });
+    res.json({ success: true, medications: medications.map(transformMedication) });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -75,6 +115,7 @@ exports.updateReminder = async (req, res) => {
       times: times || medication.reminder?.times || [],
     };
     await medication.save();
+    emitMedicationUpdated(medication.patientId, medication._id);
 
     res.json({ success: true, medication });
   } catch (err) {

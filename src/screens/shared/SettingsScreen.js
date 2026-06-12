@@ -1,10 +1,6 @@
 /**
  * Settings Screen
  * App settings and preferences
- *
- * FIX Bug 2b — Added "Edit Profile" item to the Account section.
- * It navigates to 'DoctorEditProfile' for doctors and 'EditProfile'
- * for patients so both roles can reach their edit screen from Settings.
  */
 
 import React from 'react';
@@ -63,17 +59,6 @@ const SettingsScreen = ({ navigation }) => {
           {/* ACCOUNT */}
           <Section title="Account">
             <Card style={styles.card}>
-
-              {/* ── Bug 2b fix: Edit Profile item ──────────────────────────── */}
-              <SettingItem
-                icon="edit"
-                title="Edit Profile"
-                subtitle="Update your profile information"
-                onPress={() =>
-                  navigation.navigate(isDoctor ? 'DoctorEditProfile' : 'EditProfile')
-                }
-              />
-              <Divider />
 
               <SettingItem
                 icon="bell"

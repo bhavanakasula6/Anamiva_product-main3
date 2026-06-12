@@ -79,10 +79,12 @@ export const ICONS = {
   'check-circle': { lib: Feather, name: 'check-circle' },
   checkCircle: { lib: MaterialCommunityIcons, name: 'check-circle' },
   checkCircleFilled: { lib: MaterialCommunityIcons, name: 'check-circle' },
+  'check-square': { lib: Feather, name: 'check-square' },
   close: { lib: Feather, name: 'x' },
   success: { lib: Feather, name: 'check-circle' },
   warning: { lib: Feather, name: 'alert-circle' },
   danger: { lib: Feather, name: 'x-circle' },
+  camera: { lib: Feather, name: 'camera' },
 
   /* ==============================
    * Identity

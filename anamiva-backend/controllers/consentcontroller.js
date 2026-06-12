@@ -124,6 +124,27 @@ exports.revokeConsent = async (req, res) => {
     consent.revokedAt = new Date();
     await consent.save();
 
+    try {
+      const { getIO } = require("../sockets/socket");
+      const doctorProfile = await Doctor.findById(consent.doctorId);
+      if (doctorProfile) {
+        getIO().to(`user_${doctorProfile.userId.toString()}`).emit("consent-revoked", {
+          consentId: consent._id,
+          patientId: consent.patientId,
+          appointmentId: consent.appointmentId,
+          type: consent.type,
+        });
+      }
+      getIO().to(`user_${consent.patientId.toString()}`).emit("consent-revoked", {
+        consentId: consent._id,
+        doctorId: consent.doctorId,
+        appointmentId: consent.appointmentId,
+        type: consent.type,
+      });
+    } catch (socketErr) {
+      console.warn("Socket emit failed:", socketErr.message);
+    }
+
     res.json({ success: true, consent });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -135,7 +156,7 @@ exports.revokeConsent = async (req, res) => {
 ========================= */
 exports.revokeExtendedConsent = async (req, res) => {
   try {
-    const doctorId = await resolveDoctorId(req.body.doctorId);
+    const doctorId = await resolveDoctorId(req.body?.doctorId || req.query.doctorId);
     const consent = await Consent.findOne({
       patientId: req.user.id,
       doctorId,
@@ -148,6 +169,25 @@ exports.revokeExtendedConsent = async (req, res) => {
     consent.status = "revoked";
     consent.revokedAt = new Date();
     await consent.save();
+
+    try {
+      const { getIO } = require("../sockets/socket");
+      const doctorProfile = await Doctor.findById(consent.doctorId);
+      if (doctorProfile) {
+        getIO().to(`user_${doctorProfile.userId.toString()}`).emit("consent-revoked", {
+          consentId: consent._id,
+          patientId: consent.patientId,
+          type: consent.type,
+        });
+      }
+      getIO().to(`user_${consent.patientId.toString()}`).emit("consent-revoked", {
+        consentId: consent._id,
+        doctorId: consent.doctorId,
+        type: consent.type,
+      });
+    } catch (socketErr) {
+      console.warn("Socket emit failed:", socketErr.message);
+    }
 
     res.json({ success: true, consent });
   } catch (err) {

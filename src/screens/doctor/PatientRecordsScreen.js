@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useDoctor } from '../../contexts/DoctorContext';
+import socketService from '../../services/socketService';
 
 import { Card, EmptyState, Loading, Button, Header } from '../../components/common';
 import { colors, spacing, typography, shadows } from '../../styles/theme';
@@ -43,6 +44,62 @@ const PatientRecordsScreen = ({ route, navigation }) => {
       validateAndLoad();
     }, [patientId])
   );
+
+  React.useEffect(() => {
+    let refreshHandler = null;
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      refreshHandler = (data = {}) => {
+        if (data.patientId && String(data.patientId) !== String(patientId)) return;
+        if (data.appointmentId && appointmentId && String(data.appointmentId) !== String(appointmentId)) return;
+        validateAndLoad();
+      };
+
+      socket.off('consent-granted', refreshHandler);
+      socket.off('consent-revoked', refreshHandler);
+      socket.off('access-request-approved', refreshHandler);
+      socket.off('access-request-denied', refreshHandler);
+      socket.off('access-request-cancelled', refreshHandler);
+      socket.off('medical-record-updated', refreshHandler);
+      socket.off('medical-record-created', refreshHandler);
+      socket.off('prescription-updated', refreshHandler);
+
+      socket.on('consent-granted', refreshHandler);
+      socket.on('consent-revoked', refreshHandler);
+      socket.on('access-request-approved', refreshHandler);
+      socket.on('access-request-denied', refreshHandler);
+      socket.on('access-request-cancelled', refreshHandler);
+      socket.on('medical-record-updated', refreshHandler);
+      socket.on('medical-record-created', refreshHandler);
+      socket.on('prescription-updated', refreshHandler);
+
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket && refreshHandler) {
+        socket.off('consent-granted', refreshHandler);
+        socket.off('consent-revoked', refreshHandler);
+        socket.off('access-request-approved', refreshHandler);
+        socket.off('access-request-denied', refreshHandler);
+        socket.off('access-request-cancelled', refreshHandler);
+        socket.off('medical-record-updated', refreshHandler);
+        socket.off('medical-record-created', refreshHandler);
+        socket.off('prescription-updated', refreshHandler);
+      }
+    };
+  }, [patientId, appointmentId]);
 
   const validateAndLoad = async () => {
     setLoading(true);

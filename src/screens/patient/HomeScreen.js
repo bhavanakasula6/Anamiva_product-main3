@@ -22,6 +22,7 @@ const HomeScreen = ({ navigation }) => {
     notifications,
     loading,
     loadAppointments,
+    loadActiveMedications,
     requests,
     loadRequests,
     approveRequest,
@@ -33,6 +34,7 @@ const HomeScreen = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       loadAppointments();
+      loadActiveMedications();
       loadRequests();
     }, [])
   );

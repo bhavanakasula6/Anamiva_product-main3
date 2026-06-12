@@ -35,6 +35,7 @@ import {
   CALL_STATUS,
 } from '../../data/constants';
 import { appointmentAPI, medicalRecordAPI } from '../../services/api';
+import socketService from '../../services/socketService';
 
 const AppointmentDetailsScreen = ({ route, navigation }) => {
   const { appointmentId, refresh } = route.params;
@@ -102,6 +103,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     if (!appointment?.id) return;
 
     (async () => {
+      setPrescription(null);
       const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
       if (res?.success) {
         setPrescription(res.prescription);
@@ -113,7 +115,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
         }
       }
     })();
-  }, [appointment?.id]);
+  }, [appointment?.id, refresh]);
 
   useEffect(() => {
     if (!isDoctor || !appointment || isCancelled || isCompleted) return;
@@ -126,6 +128,83 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
       setDoctorAccessStatus(status);
     })();
   }, [appointment?.id, appointment?.status, isDoctor]);
+
+  useEffect(() => {
+    if (!appointment?.id) return;
+
+    let refreshPrescriptionHandler = null;
+    let refreshAccessHandler = null;
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      refreshPrescriptionHandler = async (data) => {
+        if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
+        const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
+        if (res?.success) {
+          setPrescription(res.prescription);
+          if (res.prescription) {
+            setAppointment(prev => prev ? { ...prev, prescriptionId: res.prescription.id } : prev);
+          }
+        }
+      };
+
+      refreshAccessHandler = async (data) => {
+        if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
+
+        if (isPatient) {
+          await checkConsent(appointment.id);
+          await loadRequests();
+        }
+
+        if (isDoctor) {
+          const status = await getPatientAccessStatus({
+            patientId: appointment.patientId,
+            appointmentId: appointment.id,
+          });
+          setDoctorAccessStatus(status);
+        }
+      };
+
+      socket.off('prescription-updated', refreshPrescriptionHandler);
+      socket.off('consent-granted', refreshAccessHandler);
+      socket.off('consent-revoked', refreshAccessHandler);
+      socket.off('access-request-approved', refreshAccessHandler);
+      socket.off('access-request-denied', refreshAccessHandler);
+      socket.off('access-request-cancelled', refreshAccessHandler);
+
+      socket.on('prescription-updated', refreshPrescriptionHandler);
+      socket.on('consent-granted', refreshAccessHandler);
+      socket.on('consent-revoked', refreshAccessHandler);
+      socket.on('access-request-approved', refreshAccessHandler);
+      socket.on('access-request-denied', refreshAccessHandler);
+      socket.on('access-request-cancelled', refreshAccessHandler);
+
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket) {
+        if (refreshPrescriptionHandler) socket.off('prescription-updated', refreshPrescriptionHandler);
+        if (refreshAccessHandler) {
+          socket.off('consent-granted', refreshAccessHandler);
+          socket.off('consent-revoked', refreshAccessHandler);
+          socket.off('access-request-approved', refreshAccessHandler);
+          socket.off('access-request-denied', refreshAccessHandler);
+          socket.off('access-request-cancelled', refreshAccessHandler);
+        }
+      }
+    };
+  }, [appointment?.id, appointment?.patientId, isDoctor, isPatient]);
 
   const doctorRequest = useMemo(() => {
     if (!isPatient || !appointment) return null;

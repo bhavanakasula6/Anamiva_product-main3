@@ -35,7 +35,7 @@ const DoctorAppointmentsScreen = ({ navigation }) => {
         <Avatar source={{ uri: appointment.patient?.avatar }} size={50} name={appointment.patient?.name} />
         <View style={styles.patientInfo}>
           <Text style={styles.patientName}>{appointment.patient?.name || 'Unknown Patient'}</Text>
-          <Text style={styles.patientDetails}>{appointment.patient?.age || '-'} years, {appointment.patient?.gender || '-'}</Text>
+          <Text style={styles.patientDetails}>{appointment.patient?.age ? `${appointment.patient.age} years` : ''}, {appointment.patient?.gender ? appointment.patient.gender : ''}</Text>
         </View>
         <Badge
           variant={

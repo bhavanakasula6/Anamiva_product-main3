@@ -87,6 +87,11 @@ export const PatientProvider = ({ children }) => {
       if (!socket) return false;
 
       socket.off('appointment-updated');
+      socket.off('prescription-updated');
+      socket.off('medical-record-updated');
+      socket.off('medical-record-created');
+      socket.off('medication-updated');
+      socket.off('consent-revoked');
       socket.off('consultation-access-requested');
       socket.off('access-request-cancelled');
       socket.off('emergency-accepted');
@@ -96,6 +101,39 @@ export const PatientProvider = ({ children }) => {
       socket.on('appointment-updated', (data) => {
         console.log('[PatientContext] Received appointment-updated event:', data);
         loadAppointments();
+        loadNotifications();
+      });
+
+      socket.on('prescription-updated', (data) => {
+        console.log('[PatientContext] Prescription updated:', data);
+        loadAppointments();
+        loadMedicalRecords();
+        loadActiveMedications();
+        loadNotifications();
+      });
+
+      socket.on('medical-record-updated', (data) => {
+        console.log('[PatientContext] Medical record updated:', data);
+        loadMedicalRecords();
+        loadNotifications();
+      });
+
+      socket.on('medical-record-created', (data) => {
+        console.log('[PatientContext] Medical record created:', data);
+        loadMedicalRecords();
+      });
+
+      socket.on('medication-updated', (data) => {
+        console.log('[PatientContext] Medication updated:', data);
+        loadActiveMedications();
+        loadNotifications();
+      });
+
+      socket.on('consent-revoked', (data) => {
+        console.log('[PatientContext] Consent revoked:', data);
+        setActiveConsent(null);
+        setAccessStatus({ status: ACCESS_STATUS.NO_ACCESS, type: null });
+        loadRequests();
         loadNotifications();
       });
 
@@ -148,6 +186,11 @@ export const PatientProvider = ({ children }) => {
       const socket = socketService.getSocket();
       if (socket) {
         socket.off('appointment-updated');
+        socket.off('prescription-updated');
+        socket.off('medical-record-updated');
+        socket.off('medical-record-created');
+        socket.off('medication-updated');
+        socket.off('consent-revoked');
         socket.off('consultation-access-requested');
         socket.off('access-request-cancelled');
         socket.off('emergency-accepted');
@@ -560,11 +603,16 @@ export const PatientProvider = ({ children }) => {
       if (access.status === ACCESS_STATUS.GRANTED) {
         const consent = await consentAPI.getConsents();
         const match = consent.consents?.find(
-          c =>
-            getEntityId(c.patientId) === apt.patientId &&
-            getEntityId(c.doctorId) === apt.doctorId &&
-            getEntityId(c.appointmentId) === apt.id &&
-            c.status === CONSENT_STATUS.ACTIVE
+          c => {
+            const samePatient = getEntityId(c.patientId) === apt.patientId;
+            const sameDoctor = getEntityId(c.doctorId) === apt.doctorId;
+            const sameAppointment = getEntityId(c.appointmentId) === apt.id;
+            const active = c.status === CONSENT_STATUS.ACTIVE;
+
+            return active && samePatient && sameDoctor && (
+              c.type === 'extended' || sameAppointment
+            );
+          }
         );
 
         setActiveConsent(match || null);
@@ -592,7 +640,6 @@ export const PatientProvider = ({ children }) => {
 
       if (doctorId) {
         await consentAPI.revokeExtendedConsent({
-          patientId: user.id,
           doctorId,
         });
         setActiveConsent(null);

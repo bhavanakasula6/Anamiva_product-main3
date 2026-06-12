@@ -16,6 +16,15 @@ const getDoctorProfileId = async (user) => {
   return doctorProfile?._id || user.id;
 };
 
+const emitSocketEvent = (room, event, payload) => {
+  try {
+    const { getIO } = require('../sockets/socket');
+    getIO().to(room).emit(event, payload);
+  } catch (socketErr) {
+    console.warn('Socket emit failed:', socketErr.message);
+  }
+};
+
 /**
  * Robustly extract a name from a user object
  */
@@ -98,6 +107,16 @@ exports.createMedicalRecord = async (req, res) => {
     res.status(201).json({
       success: true,
       record: transformMedicalRecord(record)
+    });
+
+    emitSocketEvent('doctors', 'medical-record-created', {
+      recordId: record._id.toString(),
+      patientId: req.user.id,
+      status: record.status,
+    });
+    emitSocketEvent(`user_${req.user.id}`, 'medical-record-updated', {
+      recordId: record._id.toString(),
+      status: record.status,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -218,6 +237,16 @@ exports.verifyRecord = async (req, res) => {
       success: true,
       record: transformMedicalRecord(updatedRecord)
     });
+
+    emitSocketEvent(`user_${record.patientId.toString()}`, 'medical-record-updated', {
+      recordId: record._id.toString(),
+      status: record.status,
+    });
+    emitSocketEvent('doctors', 'medical-record-updated', {
+      recordId: record._id.toString(),
+      patientId: record.patientId.toString(),
+      status: record.status,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -253,6 +282,16 @@ exports.rejectRecord = async (req, res) => {
     res.json({
       success: true,
       record: transformMedicalRecord(updatedRecord)
+    });
+
+    emitSocketEvent(`user_${record.patientId.toString()}`, 'medical-record-updated', {
+      recordId: record._id.toString(),
+      status: record.status,
+    });
+    emitSocketEvent('doctors', 'medical-record-updated', {
+      recordId: record._id.toString(),
+      patientId: record.patientId.toString(),
+      status: record.status,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -315,6 +354,20 @@ exports.transcribeRecord = async (req, res) => {
       record: transformMedicalRecord(updatedRecord),
       medications: createdMedications,
     });
+
+    emitSocketEvent(`user_${record.patientId.toString()}`, 'prescription-updated', {
+      appointmentId: record.appointmentId?.toString?.() || null,
+      prescriptionId: record._id.toString(),
+    });
+    emitSocketEvent(`user_${record.patientId.toString()}`, 'medication-updated', {
+      patientId: record.patientId.toString(),
+      prescriptionId: record._id.toString(),
+    });
+    emitSocketEvent('doctors', 'medical-record-updated', {
+      recordId: record._id.toString(),
+      patientId: record.patientId.toString(),
+      status: record.status,
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -349,6 +402,46 @@ exports.updatePrescription = async (req, res) => {
 
     if (!record) {
       return res.status(404).json({ success: false, message: 'Record not found' });
+    }
+
+    if (record.type === 'prescription' && Array.isArray(updates.medications)) {
+      await Medication.deleteMany({ prescriptionRecordId: record._id });
+
+      for (const med of updates.medications.filter(m => m.name && m.dosage)) {
+        await Medication.create({
+          patientId: record.patientId?._id || record.patientId,
+          doctorId: record.doctorId?._id || record.doctorId,
+          prescriptionRecordId: record._id,
+          name: med.name,
+          dosage: med.dosage,
+          frequency: med.frequency || '',
+          duration: med.duration || '',
+          startDate: med.startDate || record.recordDate || new Date(),
+          endDate: med.endDate || null,
+          active: true,
+        });
+      }
+    } else if (record.type === 'prescription' && updates.recordDate) {
+      await Medication.updateMany(
+        { prescriptionRecordId: record._id },
+        { $set: { startDate: record.recordDate } }
+      );
+    }
+
+    if (record.type === 'prescription') {
+      try {
+        const { getIO } = require('../sockets/socket');
+        getIO().to(`user_${(record.patientId?._id || record.patientId).toString()}`).emit('prescription-updated', {
+          appointmentId: record.appointmentId?.toString?.() || null,
+          prescriptionId: record._id.toString(),
+        });
+        getIO().to(`user_${(record.patientId?._id || record.patientId).toString()}`).emit('medication-updated', {
+          patientId: (record.patientId?._id || record.patientId).toString(),
+          prescriptionId: record._id.toString(),
+        });
+      } catch (socketErr) {
+        console.warn('Socket emit failed:', socketErr.message);
+      }
     }
 
     res.json({

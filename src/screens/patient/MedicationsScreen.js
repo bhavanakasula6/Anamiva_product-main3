@@ -3,7 +3,8 @@
  * View active medications
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -38,9 +39,11 @@ const MedicationsScreen = ({navigation}) => {
     loading,
   } = usePatient();
 
-  useEffect(() => {
-    loadActiveMedications();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadActiveMedications();
+    }, [])
+  );
 
   const MedicationCard = ({ medication }) => (
     <Card style={styles.medicationCard}>
@@ -106,7 +109,7 @@ const MedicationsScreen = ({navigation}) => {
           renderItem={({ item }) => (
             <MedicationCard medication={item} />
           )}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.id || item._id}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           ListEmptyComponent={

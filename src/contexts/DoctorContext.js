@@ -61,16 +61,23 @@ export const DoctorProvider = ({ children }) => {
 
       // Avoid duplicate listeners
       sock.off('consent-granted');
+      sock.off('consent-revoked');
       sock.off('access-request-approved');
       sock.off('access-request-denied');
       sock.off('appointment-booked');
       sock.off('appointment-updated');
+      sock.off('medical-record-created');
+      sock.off('medical-record-updated');
       sock.off('emergency-created');
       sock.off('emergency-status-updated');
       sock.off('connect', registerListeners);
 
       sock.on('consent-granted', (data) => {
         console.log('[DoctorContext] Consent granted by patient:', data);
+        loadDoctorData();
+      });
+      sock.on('consent-revoked', (data) => {
+        console.log('[DoctorContext] Consent revoked by patient:', data);
         loadDoctorData();
       });
       sock.on('access-request-approved', (data) => {
@@ -89,6 +96,16 @@ export const DoctorProvider = ({ children }) => {
       sock.on('appointment-updated', (data) => {
         console.log('[DoctorContext] Appointment updated:', data);
         loadAppointments();
+        loadNotifications();
+      });
+      sock.on('medical-record-created', (data) => {
+        console.log('[DoctorContext] Medical record created:', data);
+        loadPendingRecords();
+        loadNotifications();
+      });
+      sock.on('medical-record-updated', (data) => {
+        console.log('[DoctorContext] Medical record updated:', data);
+        loadPendingRecords();
         loadNotifications();
       });
       sock.on('emergency-created', (data) => {
@@ -133,10 +150,13 @@ export const DoctorProvider = ({ children }) => {
       const sock = socketService.getSocket();
       if (sock) {
         sock.off('consent-granted');
+        sock.off('consent-revoked');
         sock.off('access-request-approved');
         sock.off('access-request-denied');
         sock.off('appointment-booked');
         sock.off('appointment-updated');
+        sock.off('medical-record-created');
+        sock.off('medical-record-updated');
         sock.off('emergency-created');
         sock.off('emergency-status-updated');
         sock.off('connect', registerListeners);

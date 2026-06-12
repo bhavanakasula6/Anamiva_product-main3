@@ -497,8 +497,9 @@ export const medicationAPI = {
   getActiveMedications: async (patientId) => {
     const params = new URLSearchParams();
     if (patientId) params.append('patientId', patientId);
-    params.append('status', 'active');
-    const response = await httpClient.get(`/medications?${params.toString()}`);
+    const queryString = params.toString();
+    const endpoint = queryString ? `/medications/active?${queryString}` : '/medications/active';
+    const response = await httpClient.get(endpoint);
     return response;
   },
 
@@ -607,9 +608,9 @@ export const consentAPI = {
   },
 
   // Revoke extended consent
-  revokeExtendedConsent: async ({ patientId, doctorId }) => {
+  revokeExtendedConsent: async ({ doctorId }) => {
     const response = await httpClient.delete('/consents/extended', {
-      data: { patientId, doctorId }
+      body: { doctorId }
     });
     return response;
   },

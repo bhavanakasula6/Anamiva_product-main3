@@ -3,7 +3,8 @@
  * View and upload medical records
  */
 
-import { useEffect } from 'react';
+import React from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   FlatList,
   StyleSheet,
@@ -34,9 +35,11 @@ import Icon from '../../components/Icon';
 const MedicalRecordsScreen = ({ navigation }) => {
   const { medicalRecords, loadMedicalRecords, loading } = usePatient();
 
-  useEffect(() => {
-    loadMedicalRecords();
-  }, []);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadMedicalRecords();
+    }, [])
+  );
 
   const getRecordIcon = (type) => {
     switch (type) {

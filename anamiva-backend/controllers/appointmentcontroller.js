@@ -2,6 +2,7 @@ const Appointment = require('../models/appointment');
 const Doctor = require('../models/doctor');
 const MedicalRecord = require('../models/medicalrecord');
 const Consent = require('../models/consent');
+const Medication = require('../models/medication');
 const crypto = require('crypto');
 
 const parseOptionalDate = (value) => {
@@ -626,6 +627,39 @@ exports.createPrescription = async (req, res) => {
       status: 'verified',
     });
 
+    const createdMedications = [];
+    if (Array.isArray(medications)) {
+      for (const med of medications.filter(m => m.name && m.dosage)) {
+        const medication = await Medication.create({
+          patientId: appointment.patientId,
+          doctorId: doctorProfile._id,
+          prescriptionRecordId: record._id,
+          name: med.name,
+          dosage: med.dosage,
+          frequency: med.frequency || '',
+          duration: med.duration || '',
+          startDate: med.startDate || record.recordDate || new Date(),
+          endDate: med.endDate || null,
+          active: true,
+        });
+        createdMedications.push(medication);
+      }
+    }
+
+    try {
+      const { getIO } = require('../sockets/socket');
+      getIO().to(`user_${appointment.patientId.toString()}`).emit('prescription-updated', {
+        appointmentId: appointment._id.toString(),
+        prescriptionId: record._id.toString(),
+      });
+      getIO().to(`user_${appointment.patientId.toString()}`).emit('medication-updated', {
+        patientId: appointment.patientId.toString(),
+        prescriptionId: record._id.toString(),
+      });
+    } catch (socketErr) {
+      console.warn('Socket emit failed:', socketErr.message);
+    }
+
     res.status(201).json({
       success: true,
       prescription: {
@@ -634,6 +668,7 @@ exports.createPrescription = async (req, res) => {
         date: record.recordDate || record.createdAt,
         medications: medications || [],
       },
+      medications: createdMedications,
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
