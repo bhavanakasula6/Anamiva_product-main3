@@ -25,32 +25,34 @@ export const SocketProvider = ({ children }) => {
   // Connect socket when user is authenticated
   useEffect(() => {
     const userId = user?.id || user?._id;
+    const handleIncomingCall = (data) => {
+      setIncomingCall({
+        appointmentId: data.appointmentId,
+        doctorName: data.caller?.name || data.doctorName || 'Doctor',
+        doctorAvatar: data.caller?.avatar || data.doctorAvatar || null,
+        videoCallRoomId: data.roomId || data.videoCallRoomId,
+      });
+    };
+    const handleCallEnded = () => {
+      setIncomingCall(null);
+    };
+
     if (userId && token) {
-      console.log('[Socket] Connecting socket for user:', userId);
       socketService.connect(userId, token);
 
       // Listen for incoming calls (patient side)
-      socketService.onCallStarted((data) => {
-        setIncomingCall({
-          appointmentId: data.appointmentId,
-          doctorName: data.caller?.name || data.doctorName || 'Doctor',
-          doctorAvatar: data.caller?.avatar || data.doctorAvatar || null,
-          videoCallRoomId: data.roomId || data.videoCallRoomId,
-        });
-      });
+      socketService.onCallStarted(handleIncomingCall);
 
       // Listen for call ended (dismiss modal if showing)
-      socketService.onCallEnded(() => {
-        setIncomingCall(null);
-      });
+      socketService.onCallEnded(handleCallEnded);
     }
 
     return () => {
       // Only remove SocketContext's own listeners, not all listeners
       const sock = socketService.getSocket();
       if (sock) {
-        sock.off('incoming-call');
-        sock.off('call-ended');
+        sock.off('incoming-call', handleIncomingCall);
+        sock.off('call-ended', handleCallEnded);
       }
       socketService.disconnect();
     };

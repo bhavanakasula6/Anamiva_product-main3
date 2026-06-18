@@ -29,6 +29,7 @@ const HomeScreen = ({ navigation }) => {
     denyRequest,
   } = usePatient();
   const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+  const [processingRequest, setProcessingRequest] = useState(null);
   const unreadCount = notifications?.filter(n => !n.read).length || 0;
 
   useFocusEffect(
@@ -52,19 +53,30 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleApproveRequest = async request => {
+    const requestId = request.id || request._id;
     try {
+      setProcessingRequest(`approve-${requestId}`);
       await approveRequest(request);
       await loadRequests();
       await loadAppointments();
       Alert.alert('Access Granted', `${getRequestDoctorName(request)} can now view the shared medical records.`);
     } catch (_error) {
       Alert.alert('Error', 'Unable to approve the access request.');
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
   const handleDenyRequest = async request => {
-    const success = await denyRequest(request);
-    await loadRequests();
+    const requestId = request.id || request._id;
+    let success = false;
+    try {
+      setProcessingRequest(`deny-${requestId}`);
+      success = await denyRequest(request);
+      await loadRequests();
+    } finally {
+      setProcessingRequest(null);
+    }
 
     Alert.alert(
       success ? 'Access Denied' : 'Error',
@@ -245,12 +257,16 @@ const HomeScreen = ({ navigation }) => {
                 <Button
                   size="sm"
                   variant="danger"
+                  loading={processingRequest === `deny-${request.id || request._id}`}
+                  disabled={!!processingRequest}
                   onPress={() => handleDenyRequest(request)}
                 >
                   Deny
                 </Button>
                 <Button
                   size="sm"
+                  loading={processingRequest === `approve-${request.id || request._id}`}
+                  disabled={!!processingRequest}
                   onPress={() => handleApproveRequest(request)}
                 >
                   Approve

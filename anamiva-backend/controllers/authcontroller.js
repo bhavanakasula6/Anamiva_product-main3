@@ -40,7 +40,13 @@ exports.sendOtp = async (req, res) => {
         message: "Phone required"
       });
 
-    const smsPhone = String(rawPhone).trim().startsWith('+') ? String(rawPhone).trim() : `+91${phone}`;
+    if (phone.length !== 10)
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid 10-digit phone number"
+      });
+
+    const smsPhone = `+91${phone}`;
     await sendOTP(smsPhone);
 
     res.json({
@@ -263,7 +269,6 @@ exports.completeProfile = async (req, res) => {
       };
       const newDoctor = await Doctor.create(doctorData);
       doctorProfile = newDoctor;
-      console.log(`Auto-created Doctor profile ${newDoctor._id} for user ${user._id} in city: ${city || 'default'}`);
     } else {
       doctorProfile = existingDoctor;
     }
@@ -351,9 +356,6 @@ exports.logout = async (req, res) => {
 ===================== */
 exports.updateProfile = async (req, res) => {
   try {
-    console.log('[updateProfile] userId:', req.user.id, 'role:', req.user.role);
-    console.log('[updateProfile] address:', JSON.stringify(req.body.address));
-    console.log('[updateProfile] specialization:', req.body.specialization, 'clinicName:', req.body.address?.clinic);
 
     const user = await User.findByIdAndUpdate(
       req.user.id,
@@ -361,7 +363,6 @@ exports.updateProfile = async (req, res) => {
       { new: true }
     );
 
-    console.log('[updateProfile] saved user.address:', JSON.stringify(user?.address));
 
     // If doctor, also update the Doctor model with professional fields
     if (user && user.role === 'doctor') {
@@ -392,7 +393,6 @@ exports.updateProfile = async (req, res) => {
 
         if (Object.keys(doctorUpdates).length > 0) {
           await Doctor.findByIdAndUpdate(doctorProfile._id, doctorUpdates);
-          console.log(`Updated Doctor profile ${doctorProfile._id} with:`, Object.keys(doctorUpdates));
         }
 
         // Re-fetch and merge for response

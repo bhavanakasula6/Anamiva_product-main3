@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { colors, typography, spacing } from '../../styles/theme';
 import { Button, Input } from '../../components/common';
-import { validatePhone } from '../../utils/validation';
+import { normalizePhone, validatePhone } from '../../utils/validation';
 
 const LoginScreen = ({ navigation }) => {
   const { sendOTP } = useAuth();
@@ -29,6 +29,7 @@ const LoginScreen = ({ navigation }) => {
   const [errors, setErrors] = useState({});
   const [cooldown, setCooldown] = useState(0);
   const cooldownRef = useRef(null);
+  const requestInFlightRef = useRef(false);
 
   useEffect(() => {
     if (cooldown > 0) {
@@ -46,18 +47,22 @@ const LoginScreen = ({ navigation }) => {
   }, [cooldown]);
 
   const handleSendOTP = async () => {
-    if (loading) return; // Prevent double-tap
+    if (loading || requestInFlightRef.current) return; // Prevent duplicate sends
 
-    if (!validatePhone(phone)) {
+    const normalizedPhone = normalizePhone(phone);
+    setPhone(normalizedPhone);
+
+    if (!validatePhone(normalizedPhone)) {
       setErrors({ phone: 'Enter a valid 10-digit phone number' });
       return;
     }
 
     setErrors({});
+    requestInFlightRef.current = true;
     setLoading(true);
 
     try {
-      const fullPhone = `${countryCode}${phone}`;
+      const fullPhone = `${countryCode}${normalizedPhone}`;
       const response = await sendOTP(fullPhone);
 
       if (response?.success) {
@@ -69,6 +74,7 @@ const LoginScreen = ({ navigation }) => {
     } catch (err) {
       Alert.alert('Error', 'Something went wrong. Please try again.');
     } finally {
+      requestInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -116,12 +122,14 @@ const LoginScreen = ({ navigation }) => {
                   <Input
                     value={phone}
                     onChangeText={text => {
-                      setPhone(text);
+                      setPhone(normalizePhone(text));
                       setErrors({});
                     }}
                     placeholder="10-digit mobile number"
                     keyboardType="phone-pad"
-                    maxLength={10}
+                    textContentType="telephoneNumber"
+                    autoComplete="tel"
+                    maxLength={20}
                     error={errors.phone}
                     style={styles.phoneInput}
                   />
@@ -132,7 +140,7 @@ const LoginScreen = ({ navigation }) => {
                 fullWidth
                 size="md"
                 loading={loading}
-                disabled={phone.length !== 10 || cooldown > 0}
+                disabled={!validatePhone(phone) || cooldown > 0 || loading}
                 onPress={handleSendOTP}
                 style={styles.button}
               >

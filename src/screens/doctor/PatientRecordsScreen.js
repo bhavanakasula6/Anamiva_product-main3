@@ -34,6 +34,7 @@ const PatientRecordsScreen = ({ route, navigation }) => {
 
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(null);
   const [access, setAccess] = useState({ status: ACCESS_STATUS.NO_ACCESS, type: null });
   const accessState = access.status;
   const consentType = access.type;
@@ -46,23 +47,22 @@ const PatientRecordsScreen = ({ route, navigation }) => {
   );
 
   React.useEffect(() => {
-    let refreshHandler = null;
+    const refreshHandler = (data = {}) => {
+      if (data.patientId && String(data.patientId) !== String(patientId)) return;
+      if (data.appointmentId && appointmentId && String(data.appointmentId) !== String(appointmentId)) return;
+      validateAndLoad();
+    };
 
     const registerListeners = () => {
       const socket = socketService.getSocket();
       if (!socket) return false;
-
-      refreshHandler = (data = {}) => {
-        if (data.patientId && String(data.patientId) !== String(patientId)) return;
-        if (data.appointmentId && appointmentId && String(data.appointmentId) !== String(appointmentId)) return;
-        validateAndLoad();
-      };
 
       socket.off('consent-granted', refreshHandler);
       socket.off('consent-revoked', refreshHandler);
       socket.off('access-request-approved', refreshHandler);
       socket.off('access-request-denied', refreshHandler);
       socket.off('access-request-cancelled', refreshHandler);
+      socket.off('access-request-updated', refreshHandler);
       socket.off('medical-record-updated', refreshHandler);
       socket.off('medical-record-created', refreshHandler);
       socket.off('prescription-updated', refreshHandler);
@@ -72,6 +72,7 @@ const PatientRecordsScreen = ({ route, navigation }) => {
       socket.on('access-request-approved', refreshHandler);
       socket.on('access-request-denied', refreshHandler);
       socket.on('access-request-cancelled', refreshHandler);
+      socket.on('access-request-updated', refreshHandler);
       socket.on('medical-record-updated', refreshHandler);
       socket.on('medical-record-created', refreshHandler);
       socket.on('prescription-updated', refreshHandler);
@@ -88,12 +89,13 @@ const PatientRecordsScreen = ({ route, navigation }) => {
 
     return () => {
       const socket = socketService.getSocket();
-      if (socket && refreshHandler) {
+      if (socket) {
         socket.off('consent-granted', refreshHandler);
         socket.off('consent-revoked', refreshHandler);
         socket.off('access-request-approved', refreshHandler);
         socket.off('access-request-denied', refreshHandler);
         socket.off('access-request-cancelled', refreshHandler);
+        socket.off('access-request-updated', refreshHandler);
         socket.off('medical-record-updated', refreshHandler);
         socket.off('medical-record-created', refreshHandler);
         socket.off('prescription-updated', refreshHandler);
@@ -122,10 +124,16 @@ const PatientRecordsScreen = ({ route, navigation }) => {
   };
 
   const handleRequestAccess = async () => {
-    const res = await requestAccess({
-      patientId,
-      appointmentId,
-    });
+    let res;
+    try {
+      setActionLoading('request-access');
+      res = await requestAccess({
+        patientId,
+        appointmentId,
+      });
+    } finally {
+      setActionLoading(null);
+    }
 
     if (res?.success) {
       await validateAndLoad();
@@ -155,7 +163,14 @@ const PatientRecordsScreen = ({ route, navigation }) => {
       return;
     }
 
-    const response = await cancelAccessRequest(activeRequestId);
+    let response;
+    try {
+      setActionLoading('cancel-request');
+      response = await cancelAccessRequest(activeRequestId);
+    } finally {
+      setActionLoading(null);
+    }
+
     if (!response?.success) {
       Alert.alert('Error', response?.message || 'Unable to cancel the access request.');
       return;
@@ -178,8 +193,9 @@ const PatientRecordsScreen = ({ route, navigation }) => {
             <Button
               size="sm"
               variant="outline"
+              loading={actionLoading === 'cancel-request'}
               onPress={handleCancelRequest}
-              disabled={!activeRequestId}
+              disabled={!activeRequestId || !!actionLoading}
             >
               Cancel Request
             </Button>
@@ -221,7 +237,12 @@ const PatientRecordsScreen = ({ route, navigation }) => {
             </Text>
 
             {appointmentId && (
-              <Button size="sm" onPress={handleRequestAccess}>
+              <Button
+                size="sm"
+                loading={actionLoading === 'request-access'}
+                disabled={!!actionLoading}
+                onPress={handleRequestAccess}
+              >
                 Request Consultation Access
               </Button>
             )}

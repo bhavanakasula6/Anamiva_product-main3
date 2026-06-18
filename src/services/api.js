@@ -110,7 +110,6 @@ export const authAPI = {
   uploadAvatar: async (imageUri) => {
     try {
       const token = await getToken();
-      console.log('uploadAvatar: token exists?', !!token, 'uri:', imageUri?.substring(0, 50));
 
       if (!token) {
         return { success: false, message: 'Not authenticated. Please login again.' };
@@ -128,7 +127,6 @@ export const authAPI = {
       });
 
       const url = `${API_BASE_URL}/auth/upload-avatar`;
-      console.log('uploadAvatar: posting to', url);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -139,7 +137,6 @@ export const authAPI = {
         body: formData,
       });
 
-      console.log('uploadAvatar: response status', response.status);
       const data = await response.json();
 
       if (!response.ok) {

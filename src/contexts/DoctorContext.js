@@ -43,7 +43,6 @@ export const DoctorProvider = ({ children }) => {
   // Load doctor data on mount
   useEffect(() => {
     if (user && user.role === 'doctor') {
-      console.log('[DoctorContext] Loading doctor data for user:', user._id || user.id);
       loadDoctorData();
     }
   }, [user?.id, user?._id, user?.role]);
@@ -55,79 +54,95 @@ export const DoctorProvider = ({ children }) => {
   useEffect(() => {
     if (!user || user.role !== 'doctor') return;
 
+    const handleConsentGranted = () => {
+      loadDoctorData();
+    };
+
+    const handleConsentRevoked = () => {
+      loadDoctorData();
+    };
+
+    const handleAccessRequestApproved = () => {
+      loadDoctorData();
+    };
+
+    const handleAccessRequestDenied = () => {
+      loadDoctorData();
+    };
+
+    const handleAccessRequestUpdated = () => {
+      loadDoctorData();
+    };
+
+    const handleAppointmentBooked = () => {
+      loadAppointments();
+      loadNotifications();
+    };
+
+    const handleAppointmentUpdated = () => {
+      loadAppointments();
+      loadNotifications();
+    };
+
+    const handleMedicalRecordCreated = () => {
+      loadPendingRecords();
+      loadNotifications();
+    };
+
+    const handleMedicalRecordUpdated = () => {
+      loadPendingRecords();
+      loadNotifications();
+    };
+
+    const handleEmergencyCreated = () => {
+      if (lastLocation) {
+        loadNearbyEmergencies(lastLocation.lat, lastLocation.lng);
+      }
+      loadNotifications();
+    };
+
+    const handleEmergencyStatusUpdated = (data) => {
+      if (data.status === 'cancelled' || data.status === 'completed') {
+        setActiveEmergency(prev =>
+          prev && (prev._id || prev.id) === data.emergencyId ? null : prev
+        );
+        setEmergencyRequests(prev =>
+          prev.filter(req => (req._id || req.id) !== data.emergencyId)
+        );
+      } else {
+        loadActiveEmergency();
+      }
+    };
+
     const registerListeners = () => {
       const sock = socketService.getSocket();
       if (!sock) return false;
 
       // Avoid duplicate listeners
-      sock.off('consent-granted');
-      sock.off('consent-revoked');
-      sock.off('access-request-approved');
-      sock.off('access-request-denied');
-      sock.off('appointment-booked');
-      sock.off('appointment-updated');
-      sock.off('medical-record-created');
-      sock.off('medical-record-updated');
-      sock.off('emergency-created');
-      sock.off('emergency-status-updated');
+      sock.off('consent-granted', handleConsentGranted);
+      sock.off('consent-revoked', handleConsentRevoked);
+      sock.off('access-request-approved', handleAccessRequestApproved);
+      sock.off('access-request-denied', handleAccessRequestDenied);
+      sock.off('access-request-updated', handleAccessRequestUpdated);
+      sock.off('appointment-booked', handleAppointmentBooked);
+      sock.off('appointment-updated', handleAppointmentUpdated);
+      sock.off('medical-record-created', handleMedicalRecordCreated);
+      sock.off('medical-record-updated', handleMedicalRecordUpdated);
+      sock.off('emergency-created', handleEmergencyCreated);
+      sock.off('emergency-status-updated', handleEmergencyStatusUpdated);
       sock.off('connect', registerListeners);
 
-      sock.on('consent-granted', (data) => {
-        console.log('[DoctorContext] Consent granted by patient:', data);
-        loadDoctorData();
-      });
-      sock.on('consent-revoked', (data) => {
-        console.log('[DoctorContext] Consent revoked by patient:', data);
-        loadDoctorData();
-      });
-      sock.on('access-request-approved', (data) => {
-        console.log('[DoctorContext] Access request approved by patient:', data);
-        loadDoctorData();
-      });
-      sock.on('access-request-denied', (data) => {
-        console.log('[DoctorContext] Access request denied by patient:', data);
-        loadDoctorData();
-      });
-      sock.on('appointment-booked', (data) => {
-        console.log('[DoctorContext] New appointment booked:', data);
-        loadAppointments();
-        loadNotifications();
-      });
-      sock.on('appointment-updated', (data) => {
-        console.log('[DoctorContext] Appointment updated:', data);
-        loadAppointments();
-        loadNotifications();
-      });
-      sock.on('medical-record-created', (data) => {
-        console.log('[DoctorContext] Medical record created:', data);
-        loadPendingRecords();
-        loadNotifications();
-      });
-      sock.on('medical-record-updated', (data) => {
-        console.log('[DoctorContext] Medical record updated:', data);
-        loadPendingRecords();
-        loadNotifications();
-      });
-      sock.on('emergency-created', (data) => {
-        console.log('[DoctorContext] New emergency request:', data);
-        if (lastLocation) {
-          loadNearbyEmergencies(lastLocation.lat, lastLocation.lng);
-        }
-        loadNotifications();
-      });
-      sock.on('emergency-status-updated', (data) => {
-        console.log('[DoctorContext] Emergency status updated:', data);
-        if (data.status === 'cancelled' || data.status === 'completed') {
-          setActiveEmergency(prev =>
-            prev && (prev._id || prev.id) === data.emergencyId ? null : prev
-          );
-          setEmergencyRequests(prev =>
-            prev.filter(req => (req._id || req.id) !== data.emergencyId)
-          );
-        } else {
-          loadActiveEmergency();
-        }
-      });
+      sock.on('consent-granted', handleConsentGranted);
+      sock.on('consent-revoked', handleConsentRevoked);
+      sock.on('access-request-approved', handleAccessRequestApproved);
+      sock.on('access-request-denied', handleAccessRequestDenied);
+      sock.on('access-request-updated', handleAccessRequestUpdated);
+      sock.on('appointment-booked', handleAppointmentBooked);
+      sock.on('appointment-updated', handleAppointmentUpdated);
+      sock.on('medical-record-created', handleMedicalRecordCreated);
+      sock.on('medical-record-updated', handleMedicalRecordUpdated);
+      sock.on('emergency-created', handleEmergencyCreated);
+      sock.on('emergency-status-updated', handleEmergencyStatusUpdated);
 
       // Re-register listeners on socket reconnect
       sock.on('connect', registerListeners);
@@ -149,16 +164,17 @@ export const DoctorProvider = ({ children }) => {
     return () => {
       const sock = socketService.getSocket();
       if (sock) {
-        sock.off('consent-granted');
-        sock.off('consent-revoked');
-        sock.off('access-request-approved');
-        sock.off('access-request-denied');
-        sock.off('appointment-booked');
-        sock.off('appointment-updated');
-        sock.off('medical-record-created');
-        sock.off('medical-record-updated');
-        sock.off('emergency-created');
-        sock.off('emergency-status-updated');
+        sock.off('consent-granted', handleConsentGranted);
+        sock.off('consent-revoked', handleConsentRevoked);
+        sock.off('access-request-approved', handleAccessRequestApproved);
+        sock.off('access-request-denied', handleAccessRequestDenied);
+        sock.off('access-request-updated', handleAccessRequestUpdated);
+        sock.off('appointment-booked', handleAppointmentBooked);
+        sock.off('appointment-updated', handleAppointmentUpdated);
+        sock.off('medical-record-created', handleMedicalRecordCreated);
+        sock.off('medical-record-updated', handleMedicalRecordUpdated);
+        sock.off('emergency-created', handleEmergencyCreated);
+        sock.off('emergency-status-updated', handleEmergencyStatusUpdated);
         sock.off('connect', registerListeners);
       }
       socketListenersRegistered.current = false;
@@ -191,9 +207,7 @@ export const DoctorProvider = ({ children }) => {
 
   const loadAppointments = async (filters = {}) => {
     try {
-      console.log('[DoctorContext] Loading appointments with filters:', JSON.stringify(filters));
       const response = await appointmentAPI.getAppointments(filters);
-      console.log('[DoctorContext] Appointments response:', response.success, 'count:', response.appointments?.length);
       if (response.success) {
         setAppointments(response.appointments || []);
       }

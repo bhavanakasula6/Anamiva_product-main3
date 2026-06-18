@@ -71,7 +71,6 @@ const EmergencyRequestScreen = ({ navigation }) => {
     let interval = null;
 
     const handleAccepted = (data) => {
-      console.log('[Emergency] Doctor accepted:', data);
       setActiveEmergency(prev =>
         prev
           ? { ...prev, status: 'accepted', acceptedAt: data.acceptedAt }
@@ -82,7 +81,6 @@ const EmergencyRequestScreen = ({ navigation }) => {
     };
 
     const handleStatusUpdate = (data) => {
-      console.log('[Emergency] Status updated:', data);
       setActiveEmergency(prev => prev ? { ...prev, status: data.status } : prev);
       if (data.status === 'completed' || data.status === 'cancelled') {
         Alert.alert(

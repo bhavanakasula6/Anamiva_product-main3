@@ -82,91 +82,99 @@ export const PatientProvider = ({ children }) => {
 
     let interval = null;
 
+    const handleAppointmentUpdated = () => {
+      loadAppointments();
+      loadNotifications();
+    };
+
+    const handlePrescriptionUpdated = () => {
+      loadAppointments();
+      loadMedicalRecords();
+      loadActiveMedications();
+      loadNotifications();
+    };
+
+    const handleMedicalRecordUpdated = () => {
+      loadMedicalRecords();
+      loadNotifications();
+    };
+
+    const handleMedicalRecordCreated = () => {
+      loadMedicalRecords();
+    };
+
+    const handleMedicationUpdated = () => {
+      loadActiveMedications();
+      loadNotifications();
+    };
+
+    const handleConsentRevoked = () => {
+      setActiveConsent(null);
+      setAccessStatus({ status: ACCESS_STATUS.NO_ACCESS, type: null });
+      loadRequests();
+      loadNotifications();
+    };
+
+    const handleConsultationAccessRequested = () => {
+      loadRequests();
+      loadNotifications();
+    };
+
+    const handleAccessRequestCancelled = () => {
+      loadRequests();
+    };
+
+    const handleAccessRequestUpdated = () => {
+      loadRequests();
+      loadNotifications();
+    };
+
+    const handleEmergencyAccepted = (data) => {
+      setEmergencyRequest(prev =>
+        prev
+          ? { ...prev, status: EMERGENCY_STATUS.ACCEPTED, acceptedAt: data.acceptedAt }
+          : prev
+      );
+      loadNotifications();
+    };
+
+    const handleEmergencyStatusUpdated = (data) => {
+      if (data.status === EMERGENCY_STATUS.CANCELLED || data.status === EMERGENCY_STATUS.COMPLETED) {
+        setEmergencyRequest(null);
+      } else {
+        setEmergencyRequest(prev => prev ? { ...prev, status: data.status } : prev);
+      }
+      loadNotifications();
+    };
+
     const registerListeners = () => {
       const socket = socketService.getSocket();
       if (!socket) return false;
 
-      socket.off('appointment-updated');
-      socket.off('prescription-updated');
-      socket.off('medical-record-updated');
-      socket.off('medical-record-created');
-      socket.off('medication-updated');
-      socket.off('consent-revoked');
-      socket.off('consultation-access-requested');
-      socket.off('access-request-cancelled');
-      socket.off('emergency-accepted');
-      socket.off('emergency-status-updated');
+      socket.off('appointment-updated', handleAppointmentUpdated);
+      socket.off('prescription-updated', handlePrescriptionUpdated);
+      socket.off('medical-record-updated', handleMedicalRecordUpdated);
+      socket.off('medical-record-created', handleMedicalRecordCreated);
+      socket.off('medication-updated', handleMedicationUpdated);
+      socket.off('consent-revoked', handleConsentRevoked);
+      socket.off('consultation-access-requested', handleConsultationAccessRequested);
+      socket.off('access-request-cancelled', handleAccessRequestCancelled);
+      socket.off('access-request-updated', handleAccessRequestUpdated);
+      socket.off('emergency-accepted', handleEmergencyAccepted);
+      socket.off('emergency-status-updated', handleEmergencyStatusUpdated);
       socket.off('connect', registerListeners);
 
-      socket.on('appointment-updated', (data) => {
-        console.log('[PatientContext] Received appointment-updated event:', data);
-        loadAppointments();
-        loadNotifications();
-      });
-
-      socket.on('prescription-updated', (data) => {
-        console.log('[PatientContext] Prescription updated:', data);
-        loadAppointments();
-        loadMedicalRecords();
-        loadActiveMedications();
-        loadNotifications();
-      });
-
-      socket.on('medical-record-updated', (data) => {
-        console.log('[PatientContext] Medical record updated:', data);
-        loadMedicalRecords();
-        loadNotifications();
-      });
-
-      socket.on('medical-record-created', (data) => {
-        console.log('[PatientContext] Medical record created:', data);
-        loadMedicalRecords();
-      });
-
-      socket.on('medication-updated', (data) => {
-        console.log('[PatientContext] Medication updated:', data);
-        loadActiveMedications();
-        loadNotifications();
-      });
-
-      socket.on('consent-revoked', (data) => {
-        console.log('[PatientContext] Consent revoked:', data);
-        setActiveConsent(null);
-        setAccessStatus({ status: ACCESS_STATUS.NO_ACCESS, type: null });
-        loadRequests();
-        loadNotifications();
-      });
-
-      socket.on('consultation-access-requested', (data) => {
-        console.log('[PatientContext] Doctor requested consultation access:', data);
-        loadRequests();
-        loadNotifications();
-      });
-
-      socket.on('access-request-cancelled', (data) => {
-        console.log('[PatientContext] Doctor cancelled access request:', data);
-        loadRequests();
-      });
-
-      socket.on('emergency-accepted', (data) => {
-        console.log('[PatientContext] Emergency accepted:', data);
-        setEmergencyRequest(prev =>
-          prev
-            ? { ...prev, status: EMERGENCY_STATUS.ACCEPTED, acceptedAt: data.acceptedAt }
-            : prev
-        );
-        loadNotifications();
-      });
-
-      socket.on('emergency-status-updated', (data) => {
-        console.log('[PatientContext] Emergency status updated:', data);
-        if (data.status === EMERGENCY_STATUS.CANCELLED || data.status === EMERGENCY_STATUS.COMPLETED) {
-          setEmergencyRequest(null);
-        } else {
-          setEmergencyRequest(prev => prev ? { ...prev, status: data.status } : prev);
-        }
-        loadNotifications();
-      });
+      socket.on('appointment-updated', handleAppointmentUpdated);
+      socket.on('prescription-updated', handlePrescriptionUpdated);
+      socket.on('medical-record-updated', handleMedicalRecordUpdated);
+      socket.on('medical-record-created', handleMedicalRecordCreated);
+      socket.on('medication-updated', handleMedicationUpdated);
+      socket.on('consent-revoked', handleConsentRevoked);
+      socket.on('consultation-access-requested', handleConsultationAccessRequested);
+      socket.on('access-request-cancelled', handleAccessRequestCancelled);
+      socket.on('access-request-updated', handleAccessRequestUpdated);
+      socket.on('emergency-accepted', handleEmergencyAccepted);
+      socket.on('emergency-status-updated', handleEmergencyStatusUpdated);
 
       socket.on('connect', registerListeners);
       return true;
@@ -185,16 +193,17 @@ export const PatientProvider = ({ children }) => {
       if (interval) clearInterval(interval);
       const socket = socketService.getSocket();
       if (socket) {
-        socket.off('appointment-updated');
-        socket.off('prescription-updated');
-        socket.off('medical-record-updated');
-        socket.off('medical-record-created');
-        socket.off('medication-updated');
-        socket.off('consent-revoked');
-        socket.off('consultation-access-requested');
-        socket.off('access-request-cancelled');
-        socket.off('emergency-accepted');
-        socket.off('emergency-status-updated');
+        socket.off('appointment-updated', handleAppointmentUpdated);
+        socket.off('prescription-updated', handlePrescriptionUpdated);
+        socket.off('medical-record-updated', handleMedicalRecordUpdated);
+        socket.off('medical-record-created', handleMedicalRecordCreated);
+        socket.off('medication-updated', handleMedicationUpdated);
+        socket.off('consent-revoked', handleConsentRevoked);
+        socket.off('consultation-access-requested', handleConsultationAccessRequested);
+        socket.off('access-request-cancelled', handleAccessRequestCancelled);
+        socket.off('access-request-updated', handleAccessRequestUpdated);
+        socket.off('emergency-accepted', handleEmergencyAccepted);
+        socket.off('emergency-status-updated', handleEmergencyStatusUpdated);
         socket.off('connect', registerListeners);
       }
     };

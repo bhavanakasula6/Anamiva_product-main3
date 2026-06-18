@@ -12,6 +12,28 @@ const resolveDoctorId = async (doctorId) => {
   return byUserId?._id || doctorId;
 };
 
+const emitAccessRequestUpdated = (request, status) => {
+  try {
+    const { getIO } = require("../sockets/socket");
+    const payload = {
+      requestId: request._id,
+      patientId: request.patientId,
+      doctorId: request.doctorId,
+      doctorUserId: request.doctorUserId,
+      appointmentId: request.appointmentId,
+      status,
+    };
+
+    const io = getIO();
+    io.to(`user_${request.patientId.toString()}`).emit("access-request-updated", payload);
+    if (request.doctorUserId) {
+      io.to(`user_${request.doctorUserId.toString()}`).emit("access-request-updated", payload);
+    }
+  } catch (socketErr) {
+    console.warn("Socket emit failed:", socketErr.message);
+  }
+};
+
 /* =========================
    GET CONSENTS (Patient)
 ========================= */
@@ -291,6 +313,7 @@ exports.requestAccess = async (req, res) => {
     });
 
     if (existing) {
+      emitAccessRequestUpdated(existing, "pending");
       return res.json({ success: true, request: existing, message: "Request already pending" });
     }
 
@@ -300,6 +323,8 @@ exports.requestAccess = async (req, res) => {
       patientId,
       appointmentId,
     });
+
+    emitAccessRequestUpdated(request, "pending");
 
     // Notify patient via socket
     try {
@@ -359,6 +384,7 @@ exports.approveRequest = async (req, res) => {
       type: "consultation",
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
+    emitAccessRequestUpdated(request, "approved");
 
     // Notify doctor via socket
     try {
@@ -399,6 +425,7 @@ exports.cancelRequest = async (req, res) => {
     request.status = "cancelled";
     request.respondedAt = new Date();
     await request.save();
+    emitAccessRequestUpdated(request, "cancelled");
 
     try {
       const { getIO } = require("../sockets/socket");
@@ -430,6 +457,7 @@ exports.denyRequest = async (req, res) => {
     request.status = "denied";
     request.respondedAt = new Date();
     await request.save();
+    emitAccessRequestUpdated(request, "denied");
 
     try {
       const { getIO } = require("../sockets/socket");

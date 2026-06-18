@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { usePatient } from '../../contexts/PatientContext';
+import socketService from '../../services/socketService';
 import { colors, spacing, typography } from '../../styles/theme';
 
 import {
@@ -43,6 +44,7 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
 
   const [loading, setLoading] = useState(false);
   const [accessMap, setAccessMap] = useState({});
+  const [actionLoading, setActionLoading] = useState(null);
 
   useEffect(() => {
     loadAccess();
@@ -53,6 +55,52 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
       loadFavorites();
     }, [])
   );
+
+  useEffect(() => {
+    const refreshAccess = () => {
+      loadFavorites();
+      loadAccess();
+    };
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      socket.off('consent-granted', refreshAccess);
+      socket.off('consent-revoked', refreshAccess);
+      socket.off('access-request-approved', refreshAccess);
+      socket.off('access-request-denied', refreshAccess);
+      socket.off('access-request-cancelled', refreshAccess);
+      socket.off('connect', registerListeners);
+
+      socket.on('consent-granted', refreshAccess);
+      socket.on('consent-revoked', refreshAccess);
+      socket.on('access-request-approved', refreshAccess);
+      socket.on('access-request-denied', refreshAccess);
+      socket.on('access-request-cancelled', refreshAccess);
+      socket.on('connect', registerListeners);
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket) {
+        socket.off('consent-granted', refreshAccess);
+        socket.off('consent-revoked', refreshAccess);
+        socket.off('access-request-approved', refreshAccess);
+        socket.off('access-request-denied', refreshAccess);
+        socket.off('access-request-cancelled', refreshAccess);
+        socket.off('connect', registerListeners);
+      }
+    };
+  }, [favorites]);
 
   const loadAccess = async () => {
     setLoading(true);
@@ -78,8 +126,13 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
         {
           text: 'Share',
           onPress: async () => {
-            await shareExtendedRecords(doctor._id);
-            await loadAccess();
+            try {
+              setActionLoading(`share-${doctor._id}`);
+              await shareExtendedRecords(doctor._id);
+              await loadAccess();
+            } finally {
+              setActionLoading(null);
+            }
           },
         },
       ]
@@ -96,8 +149,13 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
           text: 'Revoke',
           style: 'destructive',
           onPress: async () => {
-            await revokeConsent({ doctorId: doctor._id });
-            await loadAccess();
+            try {
+              setActionLoading(`revoke-${doctor._id}`);
+              await revokeConsent({ doctorId: doctor._id });
+              await loadAccess();
+            } finally {
+              setActionLoading(null);
+            }
           },
         },
       ]
@@ -121,11 +179,16 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
           text: 'Remove',
           style: 'destructive',
           onPress: async () => {
-            if (hasExtendedAccess) {
-              await revokeConsent({ doctorId: doctor._id });
+            try {
+              setActionLoading(`remove-${doctor._id}`);
+              if (hasExtendedAccess) {
+                await revokeConsent({ doctorId: doctor._id });
+              }
+              await toggleFavorite(doctor._id);
+              await loadAccess();
+            } finally {
+              setActionLoading(null);
             }
-            await toggleFavorite(doctor._id);
-            await loadAccess();
           },
         },
       ]
@@ -240,6 +303,8 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
               <Button
                 size="sm"
                 variant="danger"
+                loading={actionLoading === `revoke-${doctor._id}`}
+                disabled={!!actionLoading}
                 onPress={() => revokeExtendedAccess(doctor)}
               >
                 Revoke
@@ -247,6 +312,8 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
             ) : (
               <Button
                 size="sm"
+                loading={actionLoading === `share-${doctor._id}`}
+                disabled={!!actionLoading}
                 onPress={() => grantExtendedAccess(doctor)}
               >
                 Share
@@ -257,6 +324,7 @@ const FavoriteDoctorsScreen = ({ navigation }) => {
 
         <Button
           style={styles.bookButton}
+          disabled={!!actionLoading}
           onPress={() =>
             navigation.navigate('BookAppointment', {
               doctorId: doctor._id,

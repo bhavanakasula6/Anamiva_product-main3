@@ -29,12 +29,52 @@ const getSafeName = (user) => {
   return 'Unknown';
 };
 
+const parseDateOfBirth = (dateOfBirth) => {
+  if (!dateOfBirth || dateOfBirth === 'undefined') return null;
+
+  if (dateOfBirth instanceof Date) {
+    return Number.isNaN(dateOfBirth.getTime()) ? null : dateOfBirth;
+  }
+
+  const value = String(dateOfBirth).trim();
+  if (!value) return null;
+
+  const ddMmYyyy = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddMmYyyy) {
+    const [, day, month, year] = ddMmYyyy.map(Number);
+    const dob = new Date(year, month - 1, day);
+    return (
+      dob.getFullYear() === year &&
+      dob.getMonth() === month - 1 &&
+      dob.getDate() === day
+    ) ? dob : null;
+  }
+
+  const yyyyMmDd = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (yyyyMmDd) {
+    const [, year, month, day] = yyyyMmDd.map(Number);
+    const dob = new Date(year, month - 1, day);
+    return (
+      dob.getFullYear() === year &&
+      dob.getMonth() === month - 1 &&
+      dob.getDate() === day
+    ) ? dob : null;
+  }
+
+  try {
+    const dob = new Date(value);
+    return Number.isNaN(dob.getTime()) ? null : dob;
+  } catch {
+    return null;
+  }
+};
+
 // Robust helper to calculate age
 const calculateAge = (dateOfBirth) => {
-  if (!dateOfBirth || dateOfBirth === 'undefined') return '-';
+  const dob = parseDateOfBirth(dateOfBirth);
+  if (!dob) return '-';
+
   try {
-    const dob = new Date(dateOfBirth);
-    if (isNaN(dob.getTime())) return '-';
     const today = new Date();
     let age = today.getFullYear() - dob.getFullYear();
     const m = today.getMonth() - dob.getMonth();
@@ -75,6 +115,7 @@ const transformAppointment = (apt) => {
       name: getSafeName(aptObj.patientId),
       avatar: aptObj.patientId.avatar || null,
       age: calculateAge(aptObj.patientId.dateOfBirth),
+      dateOfBirth: aptObj.patientId.dateOfBirth || null,
       gender: (aptObj.patientId.gender && aptObj.patientId.gender !== 'undefined') ? aptObj.patientId.gender : '-',
       phone: aptObj.patientId.phone || aptObj.patientId.phoneNumber,
     } : null,
@@ -224,8 +265,6 @@ exports.getAppointments = async (req, res) => {
     const { status, startDate, endDate, page = 1, limit = 20 } = req.query;
     let filter = {};
 
-    console.log(`\n[getAppointments] role=${req.user.role}, userId=${req.user.id}`);
-
     // ── Auto-expire past appointments ──────────────────────
     // Move pending / upcoming appointments whose date+time have
     // passed to "completed" so they no longer show in Upcoming.
@@ -273,7 +312,6 @@ exports.getAppointments = async (req, res) => {
             },
           }
         );
-        console.log(`[getAppointments] Auto-expired ${result.modifiedCount} past appointments`);
       }
     } catch (expireErr) {
       console.warn('[getAppointments] Auto-expire check failed:', expireErr.message);
@@ -284,11 +322,9 @@ exports.getAppointments = async (req, res) => {
     }
     else if (req.user.role === "doctor") {
       const doctorProfile = await Doctor.findOne({ userId: req.user.id });
-      console.log(`[getAppointments] Doctor profile lookup: userId=${req.user.id} => doctorProfile=${doctorProfile ? doctorProfile._id : 'NOT FOUND'}`);
       if (doctorProfile) {
         filter.doctorId = doctorProfile._id;
       } else {
-        console.log('[getAppointments] No doctor profile found, returning empty');
         return res.json({
           success: true,
           appointments: [],
@@ -310,8 +346,6 @@ exports.getAppointments = async (req, res) => {
 
     const skip = (Number(page) - 1) * Number(limit);
 
-    console.log(`[getAppointments] filter=${JSON.stringify(filter)}`);
-
     const appointments = await Appointment.find(filter)
       .populate({ path: 'doctorId', populate: { path: 'userId' } })
       .populate('patientId')
@@ -320,7 +354,6 @@ exports.getAppointments = async (req, res) => {
       .limit(Number(limit));
 
     const total = await Appointment.countDocuments(filter);
-    console.log(`[getAppointments] found ${total} appointments`);
 
     const transformedAppointments = appointments.map(apt => transformAppointment(apt));
 

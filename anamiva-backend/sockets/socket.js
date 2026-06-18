@@ -35,7 +35,6 @@ const initSocket = (httpServer) => {
   });
 
   io.on("connection", (socket) => {
-    console.log(`Socket connected: ${socket.id} (user: ${socket.user?.id})`);
 
     // Auto-join user's personal room for targeted notifications (video calls, etc.)
     if (socket.user?.id) {
@@ -52,7 +51,6 @@ const initSocket = (httpServer) => {
     videoCallHandler(io, socket);
 
     socket.on("disconnect", () => {
-      console.log(`Socket disconnected: ${socket.id}`);
     });
   });
 

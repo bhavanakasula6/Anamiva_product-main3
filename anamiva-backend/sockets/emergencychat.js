@@ -21,7 +21,6 @@ module.exports = (io, socket) => {
 
     socket.join(emergencyId);
 
-    console.log(`🚑 ${role} joined emergency room: ${emergencyId}`);
 
     socket.emit("joinedEmergency", {
       emergencyId,

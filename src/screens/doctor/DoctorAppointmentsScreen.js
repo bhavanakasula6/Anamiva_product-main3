@@ -12,6 +12,32 @@ import { useDoctor } from '../../contexts/DoctorContext';
 import { APPOINTMENT_STATUS } from '../../data/constants';
 import { colors, spacing, typography } from '../../styles/theme';
 
+const calculateAge = (dateOfBirth) => {
+  if (!dateOfBirth || dateOfBirth === 'undefined') return null;
+
+  const value = String(dateOfBirth).trim();
+  let birthDate;
+
+  const ddMmYyyy = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (ddMmYyyy) {
+    const [, day, month, year] = ddMmYyyy.map(Number);
+    birthDate = new Date(year, month - 1, day);
+  } else {
+    birthDate = new Date(value);
+  }
+
+  if (Number.isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age -= 1;
+  }
+
+  return age >= 0 ? age : null;
+};
+
 const DoctorAppointmentsScreen = ({ navigation }) => {
   const { appointments, loading } = useDoctor();
   const [activeTab, setActiveTab] = useState(APPOINTMENT_STATUS.PENDING);
@@ -29,66 +55,76 @@ const DoctorAppointmentsScreen = ({ navigation }) => {
     setFilteredAppointments(filtered);
   }, [activeTab, appointments]);
 
-  const AppointmentCard = ({ appointment }) => (
-    <Card style={styles.card} onPress={() => navigation.navigate('AppointmentDetails', { appointmentId: appointment.id })}>
-      <View style={styles.cardHeader}>
-        <Avatar source={{ uri: appointment.patient?.avatar }} size={50} name={appointment.patient?.name} />
-        <View style={styles.patientInfo}>
-          <Text style={styles.patientName}>{appointment.patient?.name || 'Unknown Patient'}</Text>
-          <Text style={styles.patientDetails}>{appointment.patient?.age ? `${appointment.patient.age} years` : ''}, {appointment.patient?.gender ? appointment.patient.gender : ''}</Text>
-        </View>
-        <Badge
-          variant={
-            appointment.status === APPOINTMENT_STATUS.PENDING
-              ? 'warning'
-              : appointment.status === APPOINTMENT_STATUS.UPCOMING
-                ? 'primary'
-                : appointment.status === APPOINTMENT_STATUS.COMPLETED
-                  ? 'success'
-                  : 'gray'
-          }
-          size="sm"
-        >
-          {appointment.status}
-        </Badge>
+  const AppointmentCard = ({ appointment }) => {
+    const age = appointment.patient?.age && appointment.patient.age !== '-'
+      ? appointment.patient.age
+      : calculateAge(appointment.patient?.dateOfBirth);
+    const patientDetails = [
+      age !== null && age !== undefined ? `${age} years` : null,
+      appointment.patient?.gender && appointment.patient.gender !== '-' ? appointment.patient.gender : null,
+    ].filter(Boolean).join(', ');
 
-      </View>
+    return (
+      <Card style={styles.card} onPress={() => navigation.navigate('AppointmentDetails', { appointmentId: appointment.id })}>
+        <View style={styles.cardHeader}>
+          <Avatar source={{ uri: appointment.patient?.avatar }} size={50} name={appointment.patient?.name} />
+          <View style={styles.patientInfo}>
+            <Text style={styles.patientName}>{appointment.patient?.name || 'Unknown Patient'}</Text>
+            <Text style={styles.patientDetails}>{patientDetails || '-'}</Text>
+          </View>
+          <Badge
+            variant={
+              appointment.status === APPOINTMENT_STATUS.PENDING
+                ? 'warning'
+                : appointment.status === APPOINTMENT_STATUS.UPCOMING
+                  ? 'primary'
+                  : appointment.status === APPOINTMENT_STATUS.COMPLETED
+                    ? 'success'
+                    : 'gray'
+            }
+            size="sm"
+          >
+            {appointment.status}
+          </Badge>
 
-      <View style={styles.cardBody}>
-        <View style={styles.detailRow}>
-          <Icon
-            name="calendar"
-            size={14}
-            color={colors.gray[600]}
-            style={{ marginRight: spacing.xs }}
-          />
-          <Text style={styles.detailText}>
-            {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          </Text>
         </View>
-        <View style={styles.detailRow}>
-          <Icon
-            name="clock"
-            size={14}
-            color={colors.gray[600]}
-            style={{ marginRight: spacing.xs }}
-          />
-          <Text style={styles.detailText}>{appointment.time}</Text>
-        </View>
-        {appointment.symptoms && (
+
+        <View style={styles.cardBody}>
           <View style={styles.detailRow}>
             <Icon
-              name="stethoscope"
+              name="calendar"
               size={14}
               color={colors.gray[600]}
               style={{ marginRight: spacing.xs }}
             />
-            <Text style={styles.detailText}>{appointment.symptoms}</Text>
+            <Text style={styles.detailText}>
+              {new Date(appointment.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            </Text>
           </View>
-        )}
-      </View>
-    </Card>
-  );
+          <View style={styles.detailRow}>
+            <Icon
+              name="clock"
+              size={14}
+              color={colors.gray[600]}
+              style={{ marginRight: spacing.xs }}
+            />
+            <Text style={styles.detailText}>{appointment.time}</Text>
+          </View>
+          {appointment.symptoms && (
+            <View style={styles.detailRow}>
+              <Icon
+                name="stethoscope"
+                size={14}
+                color={colors.gray[600]}
+                style={{ marginRight: spacing.xs }}
+              />
+              <Text style={styles.detailText}>{appointment.symptoms}</Text>
+            </View>
+          )}
+        </View>
+      </Card>
+    );
+  };
 
   if (loading) {
     return <Loading fullScreen />;

@@ -15,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 
 import { useDoctor } from '../../contexts/DoctorContext';
+import socketService from '../../services/socketService';
 
 import { Card, EmptyState, Loading, Header } from '../../components/common';
 import { colors, spacing, typography, shadows } from '../../styles/theme';
@@ -32,12 +33,66 @@ const DoctorPatientsScreen = ({ navigation }) => {
     }, [])
   );
 
-  const loadPatients = async () => {
-    setLocalLoading(true);
+  React.useEffect(() => {
+    const refreshPatients = () => {
+      loadPatients({ silent: true });
+    };
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      socket.off('consent-granted', refreshPatients);
+      socket.off('consent-revoked', refreshPatients);
+      socket.off('access-request-approved', refreshPatients);
+      socket.off('access-request-denied', refreshPatients);
+      socket.off('access-request-cancelled', refreshPatients);
+      socket.off('access-request-updated', refreshPatients);
+      socket.off('appointment-booked', refreshPatients);
+      socket.off('appointment-updated', refreshPatients);
+      socket.off('connect', registerListeners);
+
+      socket.on('consent-granted', refreshPatients);
+      socket.on('consent-revoked', refreshPatients);
+      socket.on('access-request-approved', refreshPatients);
+      socket.on('access-request-denied', refreshPatients);
+      socket.on('access-request-cancelled', refreshPatients);
+      socket.on('access-request-updated', refreshPatients);
+      socket.on('appointment-booked', refreshPatients);
+      socket.on('appointment-updated', refreshPatients);
+      socket.on('connect', registerListeners);
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket) {
+        socket.off('consent-granted', refreshPatients);
+        socket.off('consent-revoked', refreshPatients);
+        socket.off('access-request-approved', refreshPatients);
+        socket.off('access-request-denied', refreshPatients);
+        socket.off('access-request-cancelled', refreshPatients);
+        socket.off('access-request-updated', refreshPatients);
+        socket.off('appointment-booked', refreshPatients);
+        socket.off('appointment-updated', refreshPatients);
+        socket.off('connect', registerListeners);
+      }
+    };
+  }, []);
+
+  const loadPatients = async ({ silent = false } = {}) => {
+    if (!silent) setLocalLoading(true);
 
     const list = await getPatientsWithAccess();
     setPatients(list);
-    setLocalLoading(false);
+    if (!silent) setLocalLoading(false);
   };
 
 

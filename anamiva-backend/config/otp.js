@@ -85,6 +85,28 @@ const checkOTPRateLimit = async (phone) => {
 };
 
 const sendOTP = async phone => {
+  const phoneKey = normalizePhoneKey(phone);
+
+  if (!phoneKey || phoneKey.length !== 10) {
+    const err = new Error('Enter a valid 10-digit phone number');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const otpKey = `otp:${phoneKey}`;
+  const inFlightKey = `otp_inflight:${phoneKey}`;
+  const lockAcquired = await client.set(inFlightKey, '1', {
+    NX: true,
+    EX: 10,
+  });
+
+  if (!lockAcquired) {
+    const existingOtp = await client.get(otpKey);
+    if (existingOtp) {
+      return existingOtp;
+    }
+  }
+
   // Rate limit disabled for testing
   // const allowed = await checkOTPRateLimit(phone);
   // if (!allowed) {
@@ -112,6 +134,10 @@ const sendOTP = async phone => {
     if (twilioErr.code === 20003) {
       console.error('>>> Twilio credentials are INVALID. Update TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN in .env');
     }
+  }
+
+  if (lockAcquired) {
+    await client.del(inFlightKey);
   }
 
   return otp;

@@ -3,9 +3,14 @@
  */
 
 // Phone number validation
+export const normalizePhone = (phone) => {
+  const digits = String(phone || '').replace(/\D/g, '');
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 export const validatePhone = (phone) => {
   const phoneRegex = /^[0-9]{10}$/;
-  return phoneRegex.test(phone);
+  return phoneRegex.test(normalizePhone(phone));
 };
 
 // Email validation
@@ -106,6 +111,7 @@ export const validateForm = (formData, rules) => {
 };
 
 export default {
+  normalizePhone,
   validatePhone,
   validateEmail,
   validateOTP,

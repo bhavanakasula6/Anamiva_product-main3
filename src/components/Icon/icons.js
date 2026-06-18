@@ -35,8 +35,12 @@ export const ICONS = {
   'file-text': { lib: Feather, name: 'file-text' },
   mail: { lib: Feather, name: 'mail' },
   phone: { lib: Feather, name: 'phone' },
+  'phone-off': { lib: Feather, name: 'phone-off' },
   plus: { lib: Feather, name: 'plus' },
+  'refresh-cw': { lib: Feather, name: 'refresh-cw' },
   search: { lib: Feather, name: 'search' },
+  trash: { lib: Feather, name: 'trash-2' },
+  upload: { lib: Feather, name: 'upload' },
 
   /* ==============================
    * Core Medical
@@ -56,6 +60,7 @@ export const ICONS = {
   'star-outline': { lib: MaterialCommunityIcons, name: 'star-outline' },
   stethoscope: { lib: MaterialCommunityIcons, name: 'stethoscope' },
   video: { lib: Feather, name: 'video' },
+  'video-off': { lib: Feather, name: 'video-off' },
 
   /* ==============================
    * Data / Analytics
@@ -69,6 +74,7 @@ export const ICONS = {
    * Emergency / Location
    * ============================== */
   emergency: { lib: MaterialCommunityIcons, name: 'alert-circle' },
+  'alert-circle': { lib: Feather, name: 'alert-circle' },
   'alert-triangle': { lib: Feather, name: 'alert-triangle' },
   'map-pin': { lib: Feather, name: 'map-pin' },
 
@@ -81,6 +87,7 @@ export const ICONS = {
   checkCircleFilled: { lib: MaterialCommunityIcons, name: 'check-circle' },
   'check-square': { lib: Feather, name: 'check-square' },
   close: { lib: Feather, name: 'x' },
+  'x-circle': { lib: Feather, name: 'x-circle' },
   success: { lib: Feather, name: 'check-circle' },
   warning: { lib: Feather, name: 'alert-circle' },
   danger: { lib: Feather, name: 'x-circle' },
@@ -128,6 +135,8 @@ export const ICONS = {
    * Time / Progress
    * ============================== */
   clock: { lib: Feather, name: 'clock' },
+  mic: { lib: Feather, name: 'mic' },
+  'mic-off': { lib: Feather, name: 'mic-off' },
   progress: { lib: MaterialCommunityIcons, name: 'progress-clock' },
   stopwatch: { lib: MaterialCommunityIcons, name: 'timer' },
   timer: { lib: MaterialCommunityIcons, name: 'timer-outline' },

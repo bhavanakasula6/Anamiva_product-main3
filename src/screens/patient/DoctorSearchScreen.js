@@ -112,18 +112,12 @@ const DoctorSearchScreen = ({ navigation }) => {
 
       const response = await searchDoctors(payload);
 
-      console.log(
-        'Doctors Response:',
-        JSON.stringify(response, null, 2)
-      );
-
       setDoctors(
         response?.doctors ||
         response?.data?.doctors ||
         []
       );
     } catch (err) {
-      console.log('Doctor fetch error:', err);
       setDoctors([]);
     } finally {
       setLoading(false);

@@ -30,7 +30,6 @@ export const AuthProvider = ({ children }) => {
         if (oldRawToken && !newToken) {
           await storage.saveToken(oldRawToken); // writes JSON-wrapped to 'medapp_token'
           await AsyncStorage.removeItem('auth_token'); // clean up old key
-          console.log('[Auth] Migrated token from auth_token → medapp_token');
         }
       } catch (migrationError) {
         console.warn('[Auth] Token migration failed (non-fatal):', migrationError);

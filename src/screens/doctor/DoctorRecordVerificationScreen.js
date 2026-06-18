@@ -38,6 +38,7 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
 
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState(null);
+  const [processingAction, setProcessingAction] = useState(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -57,8 +58,10 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
 
   const handleVerify = async (recordId) => {
     setProcessingId(recordId);
+    setProcessingAction('verify');
     const res = await verifyRecord(recordId);
     setProcessingId(null);
+    setProcessingAction(null);
 
     if (!res?.success) {
       Alert.alert('Error', 'Failed to verify record');
@@ -76,8 +79,10 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: async () => {
             setProcessingId(recordId);
+            setProcessingAction('reject');
             const res = await rejectRecord(recordId, 'Rejected by doctor');
             setProcessingId(null);
+            setProcessingAction(null);
 
             if (!res?.success) {
               Alert.alert('Error', 'Failed to reject record');
@@ -118,6 +123,7 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
           size="sm"
           variant="outline"
           onPress={() => handleReject(item.id)}
+          loading={processingId === item.id && processingAction === 'reject'}
           disabled={processingId !== null}
         >
           Reject
@@ -126,7 +132,7 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
         <Button
           size="sm"
           onPress={() => handleVerify(item.id)}
-          loading={processingId === item.id}
+          loading={processingId === item.id && processingAction === 'verify'}
           disabled={processingId !== null}
         >
           Verify

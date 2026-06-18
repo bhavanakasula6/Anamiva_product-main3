@@ -20,7 +20,6 @@ module.exports = (io, socket) => {
     socket.callRoomId = room;
     socket.callUserId = userId;
 
-    console.log(`📹 ${role} (${userId}) joined call room: ${roomId}`);
 
     // Notify the other participant that a peer has joined
     socket.to(room).emit("peer-joined", { userId, role });
@@ -109,6 +108,5 @@ module.exports = (io, socket) => {
     socket.leave(room);
     socket.callRoomId = null;
 
-    console.log(`📹 User left call room: ${roomId}`);
   });
 };

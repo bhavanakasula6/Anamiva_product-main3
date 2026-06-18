@@ -69,6 +69,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   const [appointment, setAppointment] = useState(null);
   const [prescription, setPrescription] = useState(null);
   const [showAccess, setShowAccess] = useState(isDoctor);
+  const [actionLoading, setActionLoading] = useState(null);
 
   const isCompleted = appointment?.status === APPOINTMENT_STATUS.COMPLETED;
   const isCancelled = appointment?.status === APPOINTMENT_STATUS.CANCELLED;
@@ -132,54 +133,62 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   useEffect(() => {
     if (!appointment?.id) return;
 
-    let refreshPrescriptionHandler = null;
-    let refreshAccessHandler = null;
+    const refreshPrescriptionHandler = async (data) => {
+      if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
+      const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
+      if (res?.success) {
+        setPrescription(res.prescription);
+        if (res.prescription) {
+          setAppointment(prev => prev ? { ...prev, prescriptionId: res.prescription.id } : prev);
+        }
+      }
+    };
+
+    const refreshAccessHandler = async (data) => {
+      if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
+
+      if (isPatient) {
+        await checkConsent(appointment.id);
+        await loadRequests();
+      }
+
+      if (isDoctor) {
+        const status = await getPatientAccessStatus({
+          patientId: appointment.patientId,
+          appointmentId: appointment.id,
+        });
+        setDoctorAccessStatus(status);
+      }
+    };
+
+    const refreshAppointmentHandler = async (data) => {
+      if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
+      await loadAppointment();
+    };
 
     const registerListeners = () => {
       const socket = socketService.getSocket();
       if (!socket) return false;
 
-      refreshPrescriptionHandler = async (data) => {
-        if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
-        const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
-        if (res?.success) {
-          setPrescription(res.prescription);
-          if (res.prescription) {
-            setAppointment(prev => prev ? { ...prev, prescriptionId: res.prescription.id } : prev);
-          }
-        }
-      };
-
-      refreshAccessHandler = async (data) => {
-        if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
-
-        if (isPatient) {
-          await checkConsent(appointment.id);
-          await loadRequests();
-        }
-
-        if (isDoctor) {
-          const status = await getPatientAccessStatus({
-            patientId: appointment.patientId,
-            appointmentId: appointment.id,
-          });
-          setDoctorAccessStatus(status);
-        }
-      };
-
       socket.off('prescription-updated', refreshPrescriptionHandler);
+      socket.off('appointment-updated', refreshAppointmentHandler);
       socket.off('consent-granted', refreshAccessHandler);
       socket.off('consent-revoked', refreshAccessHandler);
+      socket.off('consultation-access-requested', refreshAccessHandler);
       socket.off('access-request-approved', refreshAccessHandler);
       socket.off('access-request-denied', refreshAccessHandler);
       socket.off('access-request-cancelled', refreshAccessHandler);
+      socket.off('access-request-updated', refreshAccessHandler);
 
       socket.on('prescription-updated', refreshPrescriptionHandler);
+      socket.on('appointment-updated', refreshAppointmentHandler);
       socket.on('consent-granted', refreshAccessHandler);
       socket.on('consent-revoked', refreshAccessHandler);
+      socket.on('consultation-access-requested', refreshAccessHandler);
       socket.on('access-request-approved', refreshAccessHandler);
       socket.on('access-request-denied', refreshAccessHandler);
       socket.on('access-request-cancelled', refreshAccessHandler);
+      socket.on('access-request-updated', refreshAccessHandler);
 
       return true;
     };
@@ -194,14 +203,15 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     return () => {
       const socket = socketService.getSocket();
       if (socket) {
-        if (refreshPrescriptionHandler) socket.off('prescription-updated', refreshPrescriptionHandler);
-        if (refreshAccessHandler) {
-          socket.off('consent-granted', refreshAccessHandler);
-          socket.off('consent-revoked', refreshAccessHandler);
-          socket.off('access-request-approved', refreshAccessHandler);
-          socket.off('access-request-denied', refreshAccessHandler);
-          socket.off('access-request-cancelled', refreshAccessHandler);
-        }
+        socket.off('prescription-updated', refreshPrescriptionHandler);
+        socket.off('appointment-updated', refreshAppointmentHandler);
+        socket.off('consent-granted', refreshAccessHandler);
+        socket.off('consent-revoked', refreshAccessHandler);
+        socket.off('consultation-access-requested', refreshAccessHandler);
+        socket.off('access-request-approved', refreshAccessHandler);
+        socket.off('access-request-denied', refreshAccessHandler);
+        socket.off('access-request-cancelled', refreshAccessHandler);
+        socket.off('access-request-updated', refreshAccessHandler);
       }
     };
   }, [appointment?.id, appointment?.patientId, isDoctor, isPatient]);
@@ -222,11 +232,16 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   }, [requests, appointment, isPatient]);
 
   const shareAccess = async () => {
-    await shareConsultationRecords(
-      appointment.doctorId,
-      appointment.id
-    );
-    await checkConsent(appointment.id);
+    try {
+      setActionLoading('share-access');
+      await shareConsultationRecords(
+        appointment.doctorId,
+        appointment.id
+      );
+      await checkConsent(appointment.id);
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const revokeAccess = () => {
@@ -241,8 +256,13 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
           onPress: async () => {
             const consentId = activeConsent?.id || activeConsent?._id;
             if (!consentId) return;
-            await revokeConsent({ consentId });
-            await checkConsent(appointmentId);
+            try {
+              setActionLoading('revoke-access');
+              await revokeConsent({ consentId });
+              await checkConsent(appointmentId);
+            } finally {
+              setActionLoading(null);
+            }
           },
         },
       ]
@@ -251,13 +271,18 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
 
   const confirmAppointment = async () => {
     if (appointment.status !== APPOINTMENT_STATUS.PENDING) return;
-    const res = await updateAppointmentStatus(
-      appointment.id,
-      APPOINTMENT_STATUS.UPCOMING
-    );
-    if (res?.success) {
-      setAppointment(res.appointment);
-      await checkConsent(appointment.id);
+    try {
+      setActionLoading('accept-appointment');
+      const res = await updateAppointmentStatus(
+        appointment.id,
+        APPOINTMENT_STATUS.UPCOMING
+      );
+      if (res?.success) {
+        setAppointment(res.appointment);
+        await checkConsent(appointment.id);
+      }
+    } finally {
+      setActionLoading(null);
     }
   };
 
@@ -270,6 +295,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
         {
           text: 'Complete',
           onPress: async () => {
+            setActionLoading('complete-appointment');
             const res = await updateAppointmentStatus(
               appointment.id,
               APPOINTMENT_STATUS.COMPLETED
@@ -278,6 +304,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
               setAppointment(res.appointment); // 🔑
               await checkConsent(appointment.id);
             }
+            setActionLoading(null);
           },
         },
       ]
@@ -294,6 +321,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
           text: 'Yes, Cancel',
           style: 'destructive',
           onPress: async () => {
+            setActionLoading('cancel-appointment');
             const res = await updateAppointmentStatus(
               appointment.id,
               APPOINTMENT_STATUS.CANCELLED
@@ -302,6 +330,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
               setAppointment(res.appointment);
               navigation.goBack();
             }
+            setActionLoading(null);
           },
         },
       ]
@@ -314,10 +343,12 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
       return;
     }
 
+    setActionLoading('request-access');
     const res = await requestAccess({
       patientId: appointment.patientId,
       appointmentId: appointment.id,
     });
+    setActionLoading(null);
 
     if (!res?.success) {
       switch (res?.error) {
@@ -448,7 +479,12 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                             Consultation access granted
                           </Text>
                         </View>
-                        <Button variant="danger" onPress={revokeAccess}>
+                        <Button
+                          variant="danger"
+                          loading={actionLoading === 'revoke-access'}
+                          disabled={!!actionLoading}
+                          onPress={revokeAccess}
+                        >
                           Revoke Access
                         </Button>
                       </>
@@ -464,11 +500,18 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                         </View>
 
                         <Button
+                          loading={actionLoading === 'approve-request'}
+                          disabled={!!actionLoading}
                           onPress={async () => {
-                            await approveRequest(doctorRequest);
-                            await loadRequests();
-                            await checkConsent(appointment.id);
-                            Alert.alert('Access Granted', 'Doctor now has access to your consultation records.');
+                            try {
+                              setActionLoading('approve-request');
+                              await approveRequest(doctorRequest);
+                              await loadRequests();
+                              await checkConsent(appointment.id);
+                              Alert.alert('Access Granted', 'Doctor now has access to your consultation records.');
+                            } finally {
+                              setActionLoading(null);
+                            }
                           }}
                         >
                           Approve Request
@@ -476,15 +519,22 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
 
                         <Button
                           variant="danger"
+                          loading={actionLoading === 'deny-request'}
+                          disabled={!!actionLoading}
                           onPress={async () => {
-                            await denyRequest(doctorRequest);
-                            await loadRequests();
-                            await checkConsent(appointment.id);
+                            try {
+                              setActionLoading('deny-request');
+                              await denyRequest(doctorRequest);
+                              await loadRequests();
+                              await checkConsent(appointment.id);
 
-                            Alert.alert(
-                              'Access Denied',
-                              'You denied the doctor\'s consultation access request.'
-                            );
+                              Alert.alert(
+                                'Access Denied',
+                                'You denied the doctor\'s consultation access request.'
+                              );
+                            } finally {
+                              setActionLoading(null);
+                            }
                           }}
                         >
                           Deny Request
@@ -504,6 +554,8 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                           </Text>
                         </View>
                         <Button
+                          loading={actionLoading === 'share-access'}
+                          disabled={!!actionLoading}
                           onPress={shareAccess}
                         >
                           Share Consultation Records
@@ -557,6 +609,8 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                         </View>
                         <Button
                           variant="outline"
+                          loading={actionLoading === 'cancel-access-request'}
+                          disabled={!!actionLoading}
                           onPress={async () => {
                             const requestId = doctorAccessStatus.requestId;
                             if (!requestId) {
@@ -564,18 +618,23 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                               return;
                             }
 
-                            const response = await cancelAccessRequest(requestId);
-                            if (!response?.success) {
-                              Alert.alert('Error', response?.message || 'Unable to cancel the request.');
-                              return;
-                            }
+                            try {
+                              setActionLoading('cancel-access-request');
+                              const response = await cancelAccessRequest(requestId);
+                              if (!response?.success) {
+                                Alert.alert('Error', response?.message || 'Unable to cancel the request.');
+                                return;
+                              }
 
-                            const status = await getPatientAccessStatus({
-                              patientId: appointment.patientId,
-                              appointmentId: appointment.id,
-                            });
-                            setDoctorAccessStatus(status);
-                            Alert.alert('Request Cancelled', 'The access request was cancelled.');
+                              const status = await getPatientAccessStatus({
+                                patientId: appointment.patientId,
+                                appointmentId: appointment.id,
+                              });
+                              setDoctorAccessStatus(status);
+                              Alert.alert('Request Cancelled', 'The access request was cancelled.');
+                            } finally {
+                              setActionLoading(null);
+                            }
                           }}
                         >
                           Cancel Request
@@ -589,7 +648,11 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                           <Icon name="lock" size={14} color={colors.gray[500]} />
                           <Text style={styles.accessMuted}>No access</Text>
                         </View>
-                        <Button onPress={requestDoctorAccess}>
+                        <Button
+                          loading={actionLoading === 'request-access'}
+                          disabled={!!actionLoading}
+                          onPress={requestDoctorAccess}
+                        >
                           Request Consultation Access
                         </Button>
                       </>
@@ -731,7 +794,11 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
               <Text style={styles.section}>Doctor Actions</Text>
 
               {isPending && (
-                <Button onPress={confirmAppointment}>
+                <Button
+                  loading={actionLoading === 'accept-appointment'}
+                  disabled={!!actionLoading}
+                  onPress={confirmAppointment}
+                >
                   Accept Appointment
                 </Button>
               )}
@@ -758,12 +825,22 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
               )}
 
               {isUpcoming && (
-                <Button variant="success" onPress={completeConsultation}>
+                <Button
+                  variant="success"
+                  loading={actionLoading === 'complete-appointment'}
+                  disabled={!!actionLoading}
+                  onPress={completeConsultation}
+                >
                   Complete Consultation
                 </Button>
               )}
               {isPending && (
-                <Button variant="danger" onPress={cancelAppointment}>
+                <Button
+                  variant="danger"
+                  loading={actionLoading === 'cancel-appointment'}
+                  disabled={!!actionLoading}
+                  onPress={cancelAppointment}
+                >
                   Cancel Appointment
                 </Button>
               )}
