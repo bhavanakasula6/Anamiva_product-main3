@@ -18,10 +18,12 @@ const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
   const {
     appointments,
+    medicalRecords,
     activeMedications,
     notifications,
     loading,
     loadAppointments,
+    loadMedicalRecords,
     loadActiveMedications,
     requests,
     loadRequests,
@@ -35,6 +37,7 @@ const HomeScreen = ({ navigation }) => {
   useFocusEffect(
     React.useCallback(() => {
       loadAppointments();
+      loadMedicalRecords();
       loadActiveMedications();
       loadRequests();
     }, [])
@@ -106,8 +109,13 @@ const HomeScreen = ({ navigation }) => {
     return <Loading fullScreen text="Loading..." />;
   }
 
-  const QuickActionCard = ({ title, icon, color, onPress }) => (
+  const QuickActionCard = ({ title, icon, color, count, onPress }) => (
     <TouchableOpacity style={styles.quickActionCard} onPress={onPress}>
+      {count > 0 && (
+        <View style={styles.quickActionBadge}>
+          <Text style={styles.quickActionBadgeText}>{count}</Text>
+        </View>
+      )}
       <View style={[styles.quickActionIcon, { backgroundColor: color + '20' }]}>
         <Icon name={icon} size={28} color={color} />
       </View>
@@ -158,6 +166,7 @@ const HomeScreen = ({ navigation }) => {
             title="My Records"
             icon="file-text"
             color={colors.success[500]}
+            count={medicalRecords.length}
             onPress={() => navigation.navigate('MedicalRecords')}
           />
           <QuickActionCard
@@ -419,6 +428,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...shadows.sm,
+    position: 'relative',
+  },
+  quickActionBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: spacing.xs,
+    backgroundColor: colors.primary[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickActionBadgeText: {
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.white,
   },
   quickActionIcon: {
     width: 60,

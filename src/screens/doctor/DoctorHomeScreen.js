@@ -18,18 +18,29 @@ const { colors, typography, spacing, borderRadius, shadows } = theme;
 
 const DoctorHomeScreen = ({ navigation }) => {
   const { user } = useAuth();
-  const { appointments, analytics, activeEmergency, loadActiveEmergency, loadAppointments, loading } = useDoctor();
+  const {
+    appointments,
+    analytics,
+    activeEmergency,
+    pendingRecords,
+    loadActiveEmergency,
+    loadAppointments,
+    loadPendingRecords,
+    loading,
+  } = useDoctor();
 
   // Refresh data on screen focus (appointments + emergency)
   useFocusEffect(
     useCallback(() => {
       loadActiveEmergency();
       loadAppointments();
+      loadPendingRecords();
     }, [])
   );
   const APPOINTMENT_TYPE_LABELS = {
-    online: 'Online',
-    'in-person': 'In Person',
+    [APPOINTMENT_TYPES.ONLINE]: 'Online',
+    [APPOINTMENT_TYPES.IN_PERSON]: 'Clinic',
+    'in-person': 'Clinic',
   };
   const ALLOWED_TODAY_STATUSES = [
     APPOINTMENT_STATUS.PENDING,
@@ -189,6 +200,11 @@ const DoctorHomeScreen = ({ navigation }) => {
               style={styles.actionCard}
               onPress={() => navigation.navigate('DoctorRecordVerification')}
             >
+              {pendingRecords.length > 0 && (
+                <View style={styles.actionBadge}>
+                  <Text style={styles.actionBadgeText}>{pendingRecords.length}</Text>
+                </View>
+              )}
               <View style={[styles.actionIcon, { backgroundColor: colors.warning[50] }]}>
                 <Icon name="check-square" size={28} color={colors.warning[500]} />
               </View>
@@ -278,7 +294,7 @@ const DoctorHomeScreen = ({ navigation }) => {
                     </Badge>
 
                     <Badge variant="neutral" size="sm">
-                      {APPOINTMENT_TYPE_LABELS[appointment.type]}
+                      {APPOINTMENT_TYPE_LABELS[appointment.type] || 'Clinic'}
                     </Badge>
                   </View>
 
@@ -439,6 +455,24 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     alignItems: 'center',
     ...shadows.sm,
+    position: 'relative',
+  },
+  actionBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.sm,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    paddingHorizontal: spacing.xs,
+    backgroundColor: colors.danger[500],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionBadgeText: {
+    fontSize: typography.fontSize.xs,
+    fontFamily: typography.fontFamily.bold,
+    color: colors.white,
   },
   actionIcon: {
     width: 60,

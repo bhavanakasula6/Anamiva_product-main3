@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useDoctor } from '../../contexts/DoctorContext';
+import socketService from '../../services/socketService';
 
 import {
   Card,
@@ -55,6 +56,43 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
       };
     }, [])
   );
+
+  React.useEffect(() => {
+    const refreshPendingRecords = () => {
+      loadPendingRecords();
+    };
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      socket.off('medical-record-created', refreshPendingRecords);
+      socket.off('medical-record-updated', refreshPendingRecords);
+      socket.off('connect', registerListeners);
+
+      socket.on('medical-record-created', refreshPendingRecords);
+      socket.on('medical-record-updated', refreshPendingRecords);
+      socket.on('connect', registerListeners);
+
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket) {
+        socket.off('medical-record-created', refreshPendingRecords);
+        socket.off('medical-record-updated', refreshPendingRecords);
+        socket.off('connect', registerListeners);
+      }
+    };
+  }, [loadPendingRecords]);
 
   const handleVerify = async (recordId) => {
     setProcessingId(recordId);

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   Alert,
   Image,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -169,7 +170,12 @@ const UploadRecordScreen = ({ navigation }) => {
         onLeftPress={navigation.goBack}
       />
 
-      <View style={styles.container}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <Card style={styles.card}>
           {/* TITLE */}
           <Text style={styles.label}>Record Title</Text>
@@ -254,7 +260,7 @@ const UploadRecordScreen = ({ navigation }) => {
             Submit Record
           </Button>
         </Card>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
@@ -265,7 +271,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   container: {
+    flex: 1,
+    backgroundColor: colors.gray[50],
+  },
+  contentContainer: {
     padding: spacing.lg,
+    paddingBottom: spacing.xl * 2,
   },
   card: {
     padding: spacing.lg,

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { usePatient } from '../../contexts/PatientContext';
+import socketService from '../../services/socketService';
 
 import {
   colors,
@@ -40,6 +41,46 @@ const MedicalRecordsScreen = ({ navigation }) => {
       loadMedicalRecords();
     }, [])
   );
+
+  React.useEffect(() => {
+    const refreshRecords = () => {
+      loadMedicalRecords();
+    };
+
+    const registerListeners = () => {
+      const socket = socketService.getSocket();
+      if (!socket) return false;
+
+      socket.off('medical-record-created', refreshRecords);
+      socket.off('medical-record-updated', refreshRecords);
+      socket.off('prescription-updated', refreshRecords);
+      socket.off('connect', registerListeners);
+
+      socket.on('medical-record-created', refreshRecords);
+      socket.on('medical-record-updated', refreshRecords);
+      socket.on('prescription-updated', refreshRecords);
+      socket.on('connect', registerListeners);
+
+      return true;
+    };
+
+    if (!registerListeners()) {
+      const interval = setInterval(() => {
+        if (registerListeners()) clearInterval(interval);
+      }, 500);
+      return () => clearInterval(interval);
+    }
+
+    return () => {
+      const socket = socketService.getSocket();
+      if (socket) {
+        socket.off('medical-record-created', refreshRecords);
+        socket.off('medical-record-updated', refreshRecords);
+        socket.off('prescription-updated', refreshRecords);
+        socket.off('connect', registerListeners);
+      }
+    };
+  }, [loadMedicalRecords]);
 
   const getRecordIcon = (type) => {
     switch (type) {

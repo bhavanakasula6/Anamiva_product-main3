@@ -441,7 +441,8 @@ export const PatientProvider = ({ children }) => {
 
   const loadMedicalRecords = async () => {
     try {
-      const response = await medicalRecordAPI.getMedicalRecords(user.id);
+      const patientId = user?.id || user?._id;
+      const response = await medicalRecordAPI.getMedicalRecords(patientId);
       if (response.success) {
         setMedicalRecords(response.records);
       }
