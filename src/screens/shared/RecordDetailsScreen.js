@@ -7,10 +7,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import React, { useState } from 'react';
 import {
   Alert,
+  Image,
+  Linking,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +30,7 @@ import {
 } from '../../components/common';
 
 import Icon from '../../components/Icon';
+import { API_BASE_URL } from '../../services/httpClient';
 
 import {
   borderRadius,
@@ -35,6 +39,35 @@ import {
   spacing,
   typography,
 } from '../../styles/theme';
+
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/?$/, '');
+
+const getAttachmentName = (url, index) => {
+  const fallback = `Attachment ${index + 1}`;
+  if (!url) return fallback;
+
+  const cleanUrl = url.split('?')[0];
+  const name = cleanUrl.split('/').filter(Boolean).pop();
+  return name || fallback;
+};
+
+const getAttachmentType = (url) => {
+  const cleanUrl = (url || '').split('?')[0].toLowerCase();
+
+  if (/\.(jpg|jpeg|png|gif|webp)$/.test(cleanUrl)) return 'image';
+  if (cleanUrl.endsWith('.pdf')) return 'pdf';
+  return 'document';
+};
+
+const resolveAttachmentUrl = (url) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url) || url.startsWith('file://') || url.startsWith('content://')) {
+    return url;
+  }
+
+  const normalizedPath = url.startsWith('/') ? url : `/${url}`;
+  return `${API_ORIGIN}${normalizedPath}`;
+};
 
 const RecordDetailsScreen = ({ route, navigation }) => {
   const { recordId, patientId, mode, record: passedRecord } = route.params;
@@ -58,8 +91,8 @@ const RecordDetailsScreen = ({ route, navigation }) => {
   const loadRecord = async () => {
     setLoading(true);
 
-    // 🟢 Doctor verification mode → record already provided
-    if (mode === 'DOCTOR_VERIFY' && passedRecord) {
+    // Some callers already have an authorized record payload.
+    if (passedRecord) {
       setRecord(passedRecord);
       setRecordDateText(
         new Date(passedRecord.recordDate || passedRecord.date || passedRecord.createdAt)
@@ -135,6 +168,30 @@ const RecordDetailsScreen = ({ route, navigation }) => {
     Alert.alert('Error', 'Failed to verify record');
   };
 
+  const attachmentUrls = Array.from(
+    new Set([
+      ...(Array.isArray(record?.files) ? record.files : []),
+      record?.fileUrl,
+    ].filter(Boolean))
+  );
+
+  const openAttachment = async (url) => {
+    const resolvedUrl = resolveAttachmentUrl(url);
+
+    try {
+      const canOpen = await Linking.canOpenURL(resolvedUrl);
+      if (!canOpen) {
+        Alert.alert('Unable to open file', 'No app is available to open this document.');
+        return;
+      }
+
+      await Linking.openURL(resolvedUrl);
+    } catch (error) {
+      console.error('Failed to open attachment:', error);
+      Alert.alert('Unable to open file', 'Please try again.');
+    }
+  };
+
   if (loading) {
     return <Loading fullScreen text="Loading record..." />;
   }
@@ -175,6 +232,68 @@ const RecordDetailsScreen = ({ route, navigation }) => {
             </Text>
           </View>
         </Card>
+
+        {/* ATTACHMENTS */}
+        {attachmentUrls.length > 0 && (
+          <Card style={styles.sectionCard}>
+            <Text style={styles.sectionTitle}>Attachments</Text>
+
+            {attachmentUrls.map((fileUrl, index) => {
+              const attachmentType = getAttachmentType(fileUrl);
+              const resolvedUrl = resolveAttachmentUrl(fileUrl);
+              const attachmentName = getAttachmentName(fileUrl, index);
+
+              if (attachmentType === 'image') {
+                return (
+                  <TouchableOpacity
+                    key={`${fileUrl}-${index}`}
+                    activeOpacity={0.85}
+                    onPress={() => openAttachment(fileUrl)}
+                    style={styles.imageAttachment}
+                  >
+                    <Image
+                      source={{ uri: resolvedUrl }}
+                      style={styles.attachmentImage}
+                      resizeMode="contain"
+                    />
+                    <View style={styles.attachmentFooter}>
+                      <Icon name="image" size={16} color={colors.primary[500]} />
+                      <Text style={styles.attachmentName} numberOfLines={1}>
+                        {attachmentName}
+                      </Text>
+                      <Icon name="external-link" size={14} color={colors.gray[500]} />
+                    </View>
+                  </TouchableOpacity>
+                );
+              }
+
+              return (
+                <TouchableOpacity
+                  key={`${fileUrl}-${index}`}
+                  style={styles.fileAttachment}
+                  onPress={() => openAttachment(fileUrl)}
+                >
+                  <View style={styles.fileIcon}>
+                    <Icon
+                      name={attachmentType === 'pdf' ? 'file-text' : 'file'}
+                      size={22}
+                      color={colors.primary[500]}
+                    />
+                  </View>
+                  <View style={styles.fileInfo}>
+                    <Text style={styles.attachmentName} numberOfLines={1}>
+                      {attachmentName}
+                    </Text>
+                    <Text style={styles.fileHint}>
+                      Tap to open
+                    </Text>
+                  </View>
+                  <Icon name="external-link" size={16} color={colors.gray[500]} />
+                </TouchableOpacity>
+              );
+            })}
+          </Card>
+        )}
 
         {/* DIAGNOSIS */}
         {record.diagnosis && (
@@ -317,6 +436,68 @@ const styles = StyleSheet.create({
     fontFamily: typography.fontFamily.semiBold,
     color: colors.gray[800],
     marginBottom: spacing.sm,
+  },
+
+  imageAttachment: {
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[50],
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+  },
+
+  attachmentImage: {
+    width: '100%',
+    height: 280,
+    backgroundColor: colors.gray[100],
+  },
+
+  attachmentFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+
+  fileAttachment: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[50],
+    marginBottom: spacing.sm,
+  },
+
+  fileIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary[50],
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+
+  fileInfo: {
+    flex: 1,
+  },
+
+  attachmentName: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    fontFamily: typography.fontFamily.medium,
+    color: colors.gray[800],
+  },
+
+  fileHint: {
+    fontSize: typography.fontSize.xs,
+    color: colors.gray[500],
+    marginTop: 2,
   },
 
   bodyText: {

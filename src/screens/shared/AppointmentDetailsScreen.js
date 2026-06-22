@@ -447,6 +447,21 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                   </Text>
                 </View>
               ))}
+
+              <Button
+                variant="outline"
+                icon="file-text"
+                fullWidth
+                style={styles.prescriptionRecordButton}
+                onPress={() => navigation.navigate('RecordDetails', {
+                  recordId: prescription._id || prescription.id,
+                  patientId: appointment.patientId,
+                  mode: isPatient ? 'PATIENT' : 'DOCTOR',
+                  record: prescription,
+                })}
+              >
+                Open Full Prescription
+              </Button>
             </Card>
           )}
 
@@ -755,10 +770,11 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                       onPress={async () => {
                         try {
                           const res = await appointmentAPI.joinCall(appointment.id);
-                          if (res.success) {
+                          const joinedRoomId = res.appointment?.videoCallRoomId || res.videoCallRoomId;
+                          if (res.success && joinedRoomId) {
                             navigation.navigate('VideoCall', {
                               appointmentId: appointment.id,
-                              roomId: res.videoCallRoomId,
+                              roomId: joinedRoomId,
                               isCaller: false,
                               otherPartyName: appointment.doctor?.name || 'Doctor',
                             });
@@ -936,6 +952,9 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     borderRadius: 8,
     marginBottom: spacing.sm,
+  },
+  prescriptionRecordButton: {
+    marginTop: spacing.xs,
   },
   medName: {
     fontSize: typography.fontSize.sm,
