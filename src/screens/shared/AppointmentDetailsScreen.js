@@ -372,6 +372,15 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     Alert.alert('Request Sent', 'Your consultation access request has been sent to the patient.');
   };
 
+  const openPatientRecords = () => {
+    navigation.navigate('PatientRecords', {
+      patientId: appointment.patientId,
+      patientName: appointment.patient?.name || 'Patient Records',
+      appointmentId: appointment.id,
+      requestId: doctorAccessStatus?.requestId,
+    });
+  };
+
   if (!user) {
     return <Loading fullScreen text="Signing out..." />;
   }
@@ -606,12 +615,21 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                       </Text>
                     )}
                     {doctorAccessStatus?.status === ACCESS_STATUS.GRANTED && isUpcoming && (
-                      <View style={styles.accessRow}>
-                        <Icon name="unlock" size={14} color={colors.success[600]} />
-                        <Text style={styles.accessGranted}>
-                          Consultation-only access granted
-                        </Text>
-                      </View>
+                      <>
+                        <View style={styles.accessRow}>
+                          <Icon name="unlock" size={14} color={colors.success[600]} />
+                          <Text style={styles.accessGranted}>
+                            Consultation-only access granted
+                          </Text>
+                        </View>
+                        <Button
+                          variant="outline"
+                          icon="file-text"
+                          onPress={openPatientRecords}
+                        >
+                          Open Patient Records
+                        </Button>
+                      </>
                     )}
 
                     {doctorAccessStatus?.status === ACCESS_STATUS.PENDING && isUpcoming && (
@@ -654,6 +672,13 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                         >
                           Cancel Request
                         </Button>
+                        <Button
+                          variant="outline"
+                          icon="file-text"
+                          onPress={openPatientRecords}
+                        >
+                          Open Patient Records
+                        </Button>
                       </>
                     )}
 
@@ -669,6 +694,13 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                           onPress={requestDoctorAccess}
                         >
                           Request Consultation Access
+                        </Button>
+                        <Button
+                          variant="outline"
+                          icon="file-text"
+                          onPress={openPatientRecords}
+                        >
+                          Open Patient Records
                         </Button>
                       </>
                     )}
@@ -689,11 +721,20 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                       </View>
                     )}
                     {doctorAccessStatus?.status === ACCESS_STATUS.DENIED && isUpcoming && (
-                      <View style={styles.accessRow}>
-                        <Icon name="close" size={14} color={colors.gray[500]} />
-                        <Text style={styles.accessMuted}>Patient denied access to consultation records
-                        </Text>
-                      </View>
+                      <>
+                        <View style={styles.accessRow}>
+                          <Icon name="close" size={14} color={colors.gray[500]} />
+                          <Text style={styles.accessMuted}>Patient denied access to consultation records
+                          </Text>
+                        </View>
+                        <Button
+                          variant="outline"
+                          icon="file-text"
+                          onPress={openPatientRecords}
+                        >
+                          Open Patient Records
+                        </Button>
+                      </>
                     )}
                   </>
                 )}

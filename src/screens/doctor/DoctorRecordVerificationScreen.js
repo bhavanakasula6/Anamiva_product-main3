@@ -10,7 +10,6 @@ import {
   Text,
   FlatList,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -20,7 +19,6 @@ import socketService from '../../services/socketService';
 import {
   Card,
   Badge,
-  Button,
   EmptyState,
   Loading,
   Header,
@@ -33,13 +31,9 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
   const {
     pendingRecords,
     loadPendingRecords,
-    verifyRecord,
-    rejectRecord,
   } = useDoctor();
 
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState(null);
-  const [processingAction, setProcessingAction] = useState(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -94,43 +88,6 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
     };
   }, [loadPendingRecords]);
 
-  const handleVerify = async (recordId) => {
-    setProcessingId(recordId);
-    setProcessingAction('verify');
-    const res = await verifyRecord(recordId);
-    setProcessingId(null);
-    setProcessingAction(null);
-
-    if (!res?.success) {
-      Alert.alert('Error', 'Failed to verify record');
-    }
-  };
-
-  const handleReject = (recordId) => {
-    Alert.alert(
-      'Reject Record',
-      'Are you sure you want to reject this record?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reject',
-          style: 'destructive',
-          onPress: async () => {
-            setProcessingId(recordId);
-            setProcessingAction('reject');
-            const res = await rejectRecord(recordId, 'Rejected by doctor');
-            setProcessingId(null);
-            setProcessingAction(null);
-
-            if (!res?.success) {
-              Alert.alert('Error', 'Failed to reject record');
-            }
-          },
-        },
-      ]
-    );
-  };
-
   const renderItem = ({ item }) => (
     <Card
       style={styles.card}
@@ -154,27 +111,6 @@ const DoctorRecordVerificationScreen = ({ navigation }) => {
         <Badge variant="warning" size="sm">
           Pending
         </Badge>
-      </View>
-
-      <View style={styles.actions}>
-        <Button
-          size="sm"
-          variant="outline"
-          onPress={() => handleReject(item.id)}
-          loading={processingId === item.id && processingAction === 'reject'}
-          disabled={processingId !== null}
-        >
-          Reject
-        </Button>
-
-        <Button
-          size="sm"
-          onPress={() => handleVerify(item.id)}
-          loading={processingId === item.id && processingAction === 'verify'}
-          disabled={processingId !== null}
-        >
-          Verify
-        </Button>
       </View>
     </Card>
   );
@@ -220,12 +156,6 @@ const styles = StyleSheet.create({
     color: colors.gray[900],
   },
   sub: { fontSize: typography.fontSize.sm, color: colors.gray[600] },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
 });
 
 export default DoctorRecordVerificationScreen;

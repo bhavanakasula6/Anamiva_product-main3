@@ -74,13 +74,14 @@ const RecordDetailsScreen = ({ route, navigation }) => {
   const isPatientView = mode === 'PATIENT';
 
   const { medicalRecords, loadMedicalRecords } = usePatient();
-  const { getPatientMedicalRecords, updatePrescription, verifyRecord } = useDoctor();
+  const { getPatientMedicalRecords, updatePrescription, verifyRecord, rejectRecord } = useDoctor();
 
   const [record, setRecord] = useState(null);
   const [recordDateText, setRecordDateText] = useState('');
   const [loading, setLoading] = useState(true);
   const [savingDate, setSavingDate] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -135,7 +136,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
 
   const handleSaveDate = async () => {
     if (Number.isNaN(new Date(recordDateText).getTime())) {
-      Alert.alert('Invalid date', 'Please enter date in YYYY-MM-DD format');
+      Alert.alert('Invalid prescription date', 'Please enter date in YYYY-MM-DD format');
       return;
     }
 
@@ -147,11 +148,11 @@ const RecordDetailsScreen = ({ route, navigation }) => {
 
     if (response?.success) {
       setRecord(response.record);
-      Alert.alert('Saved', 'Record date updated');
+      Alert.alert('Saved', 'Prescription date updated');
       return;
     }
 
-    Alert.alert('Error', 'Failed to update record date');
+    Alert.alert('Error', 'Failed to update prescription date');
   };
 
   const handleVerify = async () => {
@@ -166,6 +167,33 @@ const RecordDetailsScreen = ({ route, navigation }) => {
     }
 
     Alert.alert('Error', 'Failed to verify record');
+  };
+
+  const handleReject = () => {
+    Alert.alert(
+      'Reject Record',
+      'Are you sure you want to reject this record?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            setRejecting(true);
+            const response = await rejectRecord(record.id || record._id, 'Rejected by doctor');
+            setRejecting(false);
+
+            if (response?.success) {
+              setRecord(response.record);
+              navigation.goBack();
+              return;
+            }
+
+            Alert.alert('Error', 'Failed to reject record');
+          },
+        },
+      ]
+    );
   };
 
   const attachmentUrls = Array.from(
@@ -336,7 +364,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
 
         {mode === 'DOCTOR_VERIFY' && (
           <Card style={styles.sectionCard}>
-            <Text style={styles.sectionTitle}>Verification</Text>
+            <Text style={styles.sectionTitle}>Prescription Date</Text>
             <TextInput
               style={styles.input}
               value={recordDateText}
@@ -348,16 +376,24 @@ const RecordDetailsScreen = ({ route, navigation }) => {
             <View style={styles.actionRow}>
               <Button
                 variant="outline"
+                onPress={handleReject}
+                loading={rejecting}
+                disabled={savingDate || verifying || rejecting}
+              >
+                Reject
+              </Button>
+              <Button
+                variant="outline"
                 onPress={handleSaveDate}
                 loading={savingDate}
-                disabled={savingDate || verifying}
+                disabled={savingDate || verifying || rejecting}
               >
-                Save Date
+                Save
               </Button>
               <Button
                 onPress={handleVerify}
                 loading={verifying}
-                disabled={savingDate || verifying}
+                disabled={savingDate || verifying || rejecting}
               >
                 Verify
               </Button>
