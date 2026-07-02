@@ -389,6 +389,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     return <Loading fullScreen text="Loading appointment..." />;
   }
   const canViewPrescription = !!prescription && (isDoctor || isPatient);
+  const prescriptionRecordId = prescription?._id || prescription?.id || appointment.prescriptionId;
 
 
   return (
@@ -877,7 +878,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                     });
                   }}
                 >
-                  {appointment.prescriptionId ? 'Edit Prescription' : 'Create Prescription'}
+                  {prescriptionRecordId ? 'Edit Prescription' : 'Create Prescription'}
                 </Button>
               )}
 

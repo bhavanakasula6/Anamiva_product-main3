@@ -253,7 +253,7 @@ export const DoctorProvider = ({ children }) => {
 
   const createPrescription = async (
     appointmentId,
-    { medications, diagnosis, notes }
+    { medications, diagnosis, notes, recordDate }
   ) => {
     try {
       const appointment = appointments.find(a => a.id === appointmentId);
@@ -272,7 +272,7 @@ export const DoctorProvider = ({ children }) => {
 
       const response = await appointmentAPI.createPrescription(
         appointmentId,
-        { medications, diagnosis, notes }
+        { medications, diagnosis, notes, recordDate }
       );
 
       if (response.success) {
