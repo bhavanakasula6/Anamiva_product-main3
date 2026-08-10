@@ -4,11 +4,13 @@ import { useState } from 'react';
 import {
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -33,6 +35,8 @@ const RECORD_TYPES = [
 
 const UploadRecordScreen = ({ navigation }) => {
   const { uploadMedicalRecord } = usePatient();
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
 
   const [type, setType] = useState('lab-report');
   const [title, setTitle] = useState('');
@@ -42,10 +46,12 @@ const UploadRecordScreen = ({ navigation }) => {
 
   const pickImage = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission Required', 'Please allow access to your photo library');
-        return;
+      if (Platform.OS !== 'web') {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Permission Required', 'Please allow access to your photo library');
+          return;
+        }
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -55,10 +61,13 @@ const UploadRecordScreen = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
         setSelectedFile({
-          uri: result.assets[0].uri,
-          name: result.assets[0].fileName || 'image.jpg',
+          uri: asset.uri,
+          file: asset.file,
+          name: asset.fileName || asset.name || asset.file?.name || 'image.jpg',
           type: 'image',
+          mimeType: asset.mimeType || asset.file?.type,
         });
       }
     } catch (error) {
@@ -75,10 +84,13 @@ const UploadRecordScreen = ({ navigation }) => {
       });
 
       if (!result.canceled && result.assets?.[0]) {
+        const asset = result.assets[0];
         setSelectedFile({
-          uri: result.assets[0].uri,
-          name: result.assets[0].name,
+          uri: asset.uri,
+          file: asset.file,
+          name: asset.name || asset.file?.name || 'document',
           type: 'document',
+          mimeType: asset.mimeType || asset.file?.type,
         });
       }
     } catch (error) {
@@ -101,6 +113,11 @@ const UploadRecordScreen = ({ navigation }) => {
   };
 
   const takePhoto = async () => {
+    if (Platform.OS === 'web') {
+      Alert.alert('Camera unavailable', 'Please use Choose from Gallery or Pick Document on the website.');
+      return;
+    }
+
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== 'granted') {
@@ -172,7 +189,7 @@ const UploadRecordScreen = ({ navigation }) => {
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, isWeb && styles.webContentContainer]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -278,6 +295,11 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingBottom: spacing.xl * 2,
   },
+  webContentContainer: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
+  },
   card: {
     padding: spacing.lg,
     ...shadows.sm,
@@ -295,6 +317,13 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     fontSize: typography.fontSize.base,
     color: colors.gray[900],
+    ...(Platform.OS === 'web'
+      ? {
+          outlineStyle: 'none',
+          outlineWidth: 0,
+          boxShadow: 'none',
+        }
+      : {}),
   },
   typeRow: {
     flexDirection: 'row',

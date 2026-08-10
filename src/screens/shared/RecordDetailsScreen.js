@@ -9,11 +9,13 @@ import {
   Alert,
   Image,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -70,8 +72,11 @@ const resolveAttachmentUrl = (url) => {
 };
 
 const RecordDetailsScreen = ({ route, navigation }) => {
-  const { recordId, patientId, mode, record: passedRecord } = route.params;
+  const { recordId = '', patientId = '', mode, record: passedRecord } = route.params || {};
+  const { width } = useWindowDimensions();
   const isPatientView = mode === 'PATIENT';
+  const isWeb = Platform.OS === 'web';
+  const isWide = width >= 768;
 
   const { medicalRecords, loadMedicalRecords } = usePatient();
   const { getPatientMedicalRecords, updatePrescription, verifyRecord, rejectRecord } = useDoctor();
@@ -207,6 +212,11 @@ const RecordDetailsScreen = ({ route, navigation }) => {
     const resolvedUrl = resolveAttachmentUrl(url);
 
     try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
       const canOpen = await Linking.canOpenURL(resolvedUrl);
       if (!canOpen) {
         Alert.alert('Unable to open file', 'No app is available to open this document.');
@@ -243,10 +253,12 @@ const RecordDetailsScreen = ({ route, navigation }) => {
 
       <ScrollView
         style={styles.container}
+        contentContainerStyle={isWeb && styles.webScrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={[styles.content, isWeb && styles.webContent]}>
         {/* HEADER CARD */}
-        <Card style={styles.headerCard}>
+        <Card style={[styles.headerCard, isWide && styles.wideCard]}>
           <Text style={styles.title}>{record.title}</Text>
 
           <View style={styles.metaRow}>
@@ -266,6 +278,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
           <Card style={styles.sectionCard}>
             <Text style={styles.sectionTitle}>Attachments</Text>
 
+            <View style={[styles.attachmentsGrid, isWide && styles.attachmentsGridWide]}>
             {attachmentUrls.map((fileUrl, index) => {
               const attachmentType = getAttachmentType(fileUrl);
               const resolvedUrl = resolveAttachmentUrl(fileUrl);
@@ -277,7 +290,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
                     key={`${fileUrl}-${index}`}
                     activeOpacity={0.85}
                     onPress={() => openAttachment(fileUrl)}
-                    style={styles.imageAttachment}
+                    style={[styles.imageAttachment, isWide && styles.attachmentTileWide]}
                   >
                     <Image
                       source={{ uri: resolvedUrl }}
@@ -298,7 +311,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
               return (
                 <TouchableOpacity
                   key={`${fileUrl}-${index}`}
-                  style={styles.fileAttachment}
+                  style={[styles.fileAttachment, isWide && styles.attachmentTileWide]}
                   onPress={() => openAttachment(fileUrl)}
                 >
                   <View style={styles.fileIcon}>
@@ -320,6 +333,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
                 </TouchableOpacity>
               );
             })}
+            </View>
           </Card>
         )}
 
@@ -420,6 +434,7 @@ const RecordDetailsScreen = ({ route, navigation }) => {
         )}
 
         <View style={{ height: spacing.xl }} />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -434,7 +449,19 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.gray[50],
+  },
+
+  content: {
     padding: spacing.lg,
+  },
+
+  webScrollContent: {
+    alignItems: 'center',
+  },
+
+  webContent: {
+    width: '100%',
+    maxWidth: 920,
   },
 
   headerCard: {
@@ -443,7 +470,12 @@ const styles = StyleSheet.create({
     ...shadows.sm,
   },
 
+  wideCard: {
+    padding: spacing.xl,
+  },
+
   title: {
+    flexShrink: 1,
     fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
     color: colors.gray[900],
@@ -454,9 +486,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     marginTop: spacing.xs,
+    flexWrap: 'wrap',
   },
 
   metaText: {
+    flexShrink: 1,
     fontSize: typography.fontSize.sm,
     color: colors.gray[500],
   },
@@ -481,6 +515,21 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[50],
     overflow: 'hidden',
     marginBottom: spacing.sm,
+  },
+
+  attachmentsGrid: {
+    gap: spacing.sm,
+  },
+
+  attachmentsGridWide: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+
+  attachmentTileWide: {
+    flexBasis: '48%',
+    flexGrow: 1,
+    minWidth: 260,
   },
 
   attachmentImage: {
@@ -521,10 +570,12 @@ const styles = StyleSheet.create({
 
   fileInfo: {
     flex: 1,
+    minWidth: 0,
   },
 
   attachmentName: {
     flex: 1,
+    minWidth: 0,
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.medium,
     color: colors.gray[800],
@@ -552,9 +603,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    flexWrap: 'wrap',
   },
 
   medName: {
+    flexShrink: 1,
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.semiBold,
     color: colors.gray[900],
@@ -596,6 +649,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: spacing.sm,
+    flexWrap: 'wrap',
   },
 });
 

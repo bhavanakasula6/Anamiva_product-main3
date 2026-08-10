@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { Alert, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, Platform, View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePatient } from '../../contexts/PatientContext';
@@ -16,6 +16,10 @@ import { APPOINTMENT_STATUS } from '../../data/constants';
 
 const HomeScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isTabletUp = width >= 768;
+  const isDesktop = width >= 1100;
   const {
     appointments,
     medicalRecords,
@@ -110,7 +114,14 @@ const HomeScreen = ({ navigation }) => {
   }
 
   const QuickActionCard = ({ title, icon, color, count, onPress }) => (
-    <TouchableOpacity style={styles.quickActionCard} onPress={onPress}>
+    <TouchableOpacity
+      style={[
+        styles.quickActionCard,
+        isTabletUp && styles.quickActionCardTablet,
+        isDesktop && styles.quickActionCardDesktop,
+      ]}
+      onPress={onPress}
+    >
       {count > 0 && (
         <View style={styles.quickActionBadge}>
           <Text style={styles.quickActionBadgeText}>{count}</Text>
@@ -125,7 +136,11 @@ const HomeScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={isWeb && styles.webScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={styles.header}>
         <View>
@@ -350,6 +365,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.gray[50],
   },
+  webScrollContent: {
+    width: '100%',
+    maxWidth: 1180,
+    alignSelf: 'center',
+    paddingBottom: spacing['2xl'],
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -430,6 +451,12 @@ const styles = StyleSheet.create({
     ...shadows.sm,
     position: 'relative',
   },
+  quickActionCardTablet: {
+    flexBasis: '31%',
+  },
+  quickActionCardDesktop: {
+    flexBasis: '22%',
+  },
   quickActionBadge: {
     position: 'absolute',
     top: spacing.sm,
@@ -479,6 +506,7 @@ const styles = StyleSheet.create({
   accessRequestInfo: {
     flex: 1,
     marginLeft: spacing.md,
+    minWidth: 0,
   },
   accessRequestActions: {
     flexDirection: 'row',
@@ -494,20 +522,24 @@ const styles = StyleSheet.create({
   appointmentInfo: {
     flex: 1,
     marginLeft: spacing.md,
+    minWidth: 0,
   },
   doctorName: {
     fontSize: typography.fontSize.base,
     fontFamily: typography.fontFamily.semiBold,
     color: colors.gray[900],
+    flexShrink: 1,
   },
   doctorSpecialty: {
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.regular,
     color: colors.gray[600],
     marginTop: spacing.xs / 2,
+    flexShrink: 1,
   },
   appointmentDetails: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.lg,
   },
   appointmentDetailItem: {
@@ -551,11 +583,13 @@ const styles = StyleSheet.create({
   },
   medicationInfo: {
     flex: 1,
+    minWidth: 0,
   },
   medicationName: {
     fontSize: typography.fontSize.base,
     fontFamily: typography.fontFamily.semiBold,
     color: colors.gray[900],
+    flexShrink: 1,
   },
   medicationDosage: {
     fontSize: typography.fontSize.sm,

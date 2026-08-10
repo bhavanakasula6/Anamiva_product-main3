@@ -10,6 +10,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -102,7 +103,7 @@ const NotificationsScreen = ({ navigation }) => {
         style={styles.container}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.content}>
+        <View style={[styles.content, Platform.OS === 'web' && styles.webContent]}>
           {/* NOTIFICATIONS */}
           {notifications.length > 0 ? (
             notifications.map((notification) => (
@@ -221,6 +222,12 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
 
+  webContent: {
+    width: '100%',
+    maxWidth: 920,
+    alignSelf: 'center',
+  },
+
   notificationCard: {
     marginBottom: spacing.md,
     padding: spacing.lg,
@@ -246,6 +253,7 @@ const styles = StyleSheet.create({
 
   notificationText: {
     flex: 1,
+    minWidth: 0,
   },
 
   notificationTitle: {
@@ -298,10 +306,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.md,
+    flexWrap: 'wrap',
   },
 
   requestText: {
     flex: 1,
+    minWidth: 0,
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.medium,
     color: colors.gray[800],
@@ -311,6 +321,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     justifyContent: 'flex-end',
+    flexWrap: 'wrap',
   },
 });
 

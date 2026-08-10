@@ -10,6 +10,8 @@ import storage from '../services/storage';
 import { USER_ROLES } from '../data/constants';
 
 const AuthContext = createContext(null);
+const OTP_COOLDOWN_MS = 30000;
+const lastOtpSentAtByPhone = {};
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
@@ -74,7 +76,21 @@ export const AuthProvider = ({ children }) => {
   // Send OTP
   const sendOTP = async (phone) => {
     try {
+      const now = Date.now();
+      const lastSentAt = lastOtpSentAtByPhone[phone] || 0;
+
+      if (now - lastSentAt < OTP_COOLDOWN_MS) {
+        return {
+          success: true,
+          throttled: true,
+          message: 'OTP was already sent recently',
+        };
+      }
+
       const response = await authAPI.sendOTP(phone);
+      if (response?.success) {
+        lastOtpSentAtByPhone[phone] = now;
+      }
       return response;
     } catch (error) {
       console.error('Error sending OTP:', error);

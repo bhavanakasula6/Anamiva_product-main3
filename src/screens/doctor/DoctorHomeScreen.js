@@ -4,7 +4,7 @@
  */
 
 import { useMemo, useCallback } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Text, TouchableOpacity, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Avatar, Badge, Card, IconButton, Loading } from '../../components/common';
@@ -18,6 +18,10 @@ const { colors, typography, spacing, borderRadius, shadows } = theme;
 
 const DoctorHomeScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { width } = useWindowDimensions();
+  const isWeb = Platform.OS === 'web';
+  const isTabletUp = width >= 768;
+  const isDesktop = width >= 1100;
   const {
     appointments,
     analytics,
@@ -84,7 +88,11 @@ const DoctorHomeScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={isWeb && styles.webScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Header */}
         <View style={styles.header}>
           <View>
@@ -105,8 +113,8 @@ const DoctorHomeScreen = ({ navigation }) => {
 
         {/* Today's Stats */}
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Today's Overview</Text>
-          <View style={styles.statsGrid}>
+          <Text style={styles.sectionTitle}>{"Today's Overview"}</Text>
+          <View style={[styles.statsGrid, isTabletUp && styles.statsGridWide]}>
             <StatCard
               title="Appointments"
               value={todayAppointments.length}
@@ -158,7 +166,7 @@ const DoctorHomeScreen = ({ navigation }) => {
           <Text style={styles.sectionTitle}>Quick Actions</Text>
           <View style={styles.actionsGrid}>
             <TouchableOpacity
-              style={styles.actionCard}
+              style={[styles.actionCard, isTabletUp && styles.actionCardTablet, isDesktop && styles.actionCardDesktop]}
               onPress={() => navigation.navigate('DoctorAppointmentsList')}
             >
               <View style={[styles.actionIcon, { backgroundColor: colors.primary[50] }]}>
@@ -168,7 +176,7 @@ const DoctorHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
+              style={[styles.actionCard, isTabletUp && styles.actionCardTablet, isDesktop && styles.actionCardDesktop]}
               onPress={() => navigation.navigate('EmergencyList')}
             >
               <View style={[styles.actionIcon, { backgroundColor: colors.danger[50] }]}>
@@ -178,7 +186,7 @@ const DoctorHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
+              style={[styles.actionCard, isTabletUp && styles.actionCardTablet, isDesktop && styles.actionCardDesktop]}
               onPress={() => navigation.navigate('AnalyticsMain')}
             >
               <View style={[styles.actionIcon, { backgroundColor: colors.success[50] }]}>
@@ -188,7 +196,7 @@ const DoctorHomeScreen = ({ navigation }) => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.actionCard}
+              style={[styles.actionCard, isTabletUp && styles.actionCardTablet, isDesktop && styles.actionCardDesktop]}
               onPress={() => navigation.navigate('AllPatientRecords')}
             >
               <View style={[styles.actionIcon, { backgroundColor: colors.warning[50] }]}>
@@ -197,7 +205,7 @@ const DoctorHomeScreen = ({ navigation }) => {
               <Text style={styles.actionText}>Patient Records</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.actionCard}
+              style={[styles.actionCard, isTabletUp && styles.actionCardTablet, isDesktop && styles.actionCardDesktop]}
               onPress={() => navigation.navigate('DoctorRecordVerification')}
             >
               {pendingRecords.length > 0 && (
@@ -217,7 +225,7 @@ const DoctorHomeScreen = ({ navigation }) => {
         {/* Today's Appointments */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Today's Appointments</Text>
+            <Text style={styles.sectionTitle}>{"Today's Appointments"}</Text>
             <TouchableOpacity onPress={() => navigation.navigate('DoctorAppointmentsList')}>
               <Text style={styles.seeAllText}>See All</Text>
             </TouchableOpacity>
@@ -337,6 +345,12 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.gray[50],
   },
+  webScrollContent: {
+    width: '100%',
+    maxWidth: 1180,
+    alignSelf: 'center',
+    paddingBottom: spacing['2xl'],
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -396,8 +410,13 @@ const styles = StyleSheet.create({
   statsGrid: {
     gap: spacing.md,
   },
+  statsGridWide: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
   statCard: {
     flexDirection: 'row',
+    flex: 1,
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     padding: spacing.lg,
@@ -457,6 +476,12 @@ const styles = StyleSheet.create({
     ...shadows.sm,
     position: 'relative',
   },
+  actionCardTablet: {
+    width: '31%',
+  },
+  actionCardDesktop: {
+    width: '18.7%',
+  },
   actionBadge: {
     position: 'absolute',
     top: spacing.sm,
@@ -500,11 +525,13 @@ const styles = StyleSheet.create({
   appointmentInfo: {
     flex: 1,
     marginLeft: spacing.md,
+    minWidth: 0,
   },
   patientName: {
     fontSize: typography.fontSize.base,
     fontFamily: typography.fontFamily.semiBold,
     color: colors.gray[900],
+    flexShrink: 1,
   },
   appointmentTime: {
     fontSize: typography.fontSize.sm,

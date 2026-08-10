@@ -9,8 +9,10 @@ import {
   Text,
   StyleSheet,
   Alert,
+  Platform,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -38,8 +40,11 @@ import { appointmentAPI, medicalRecordAPI } from '../../services/api';
 import socketService from '../../services/socketService';
 
 const AppointmentDetailsScreen = ({ route, navigation }) => {
-  const { appointmentId, refresh } = route.params;
+  const { appointmentId = '', refresh } = route.params || {};
+  const { width } = useWindowDimensions();
   const { user } = useAuth();
+  const isWeb = Platform.OS === 'web';
+  const isWide = width >= 768;
 
   const role = user?.role;
   const isPatient = role === 'patient';
@@ -400,11 +405,15 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
         onLeftPress={() => navigation.goBack()}
         variant="surface"
       />
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.container}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={isWeb && styles.webScrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.container, isWeb && styles.webContainer]}>
 
           {/* Appointment Info */}
-          <Card style={styles.card}>
+          <Card style={[styles.card, isWide && styles.primaryCard]}>
             <View style={styles.titleRow}>
               <Icon name="calendar" size={18} color={colors.primary[500]} />
               <Text style={styles.title}>Appointment</Text>
@@ -915,7 +924,10 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.white },
   scrollView: { flex: 1, backgroundColor: colors.gray[50] },
   container: { flex: 1, padding: spacing.lg, backgroundColor: colors.gray[50] },
+  webScrollContent: { alignItems: 'center' },
+  webContainer: { width: '100%', maxWidth: 920 },
   card: { marginBottom: spacing.md, padding: spacing.lg, ...shadows.sm, gap: spacing.sm },
+  primaryCard: { padding: spacing.xl },
 
   titleRow: {
     flexDirection: 'row',
@@ -933,6 +945,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
+    flexWrap: 'wrap',
   },
 
   idLabel: {
@@ -941,6 +954,7 @@ const styles = StyleSheet.create({
   },
 
   idValue: {
+    flexShrink: 1,
     fontSize: typography.fontSize.sm,
     fontFamily: typography.fontFamily.mono || typography.fontFamily.medium,
     color: colors.gray[800],
@@ -952,14 +966,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
+    flexWrap: 'wrap',
   },
 
   title: {
+    flexShrink: 1,
     fontSize: typography.fontSize.lg,
     fontFamily: typography.fontFamily.bold,
   },
 
   meta: {
+    flexShrink: 1,
     fontSize: typography.fontSize.sm,
     color: colors.gray[600],
   },
@@ -970,21 +987,25 @@ const styles = StyleSheet.create({
   },
 
   accessGranted: {
+    flexShrink: 1,
     color: colors.success[600],
     fontSize: typography.fontSize.sm,
   },
 
   accessPending: {
+    flexShrink: 1,
     color: colors.warning[600],
     fontSize: typography.fontSize.sm,
   },
 
   accessDenied: {
+    flexShrink: 1,
     color: colors.danger[500],
     fontSize: typography.fontSize.sm,
   },
 
   accessMuted: {
+    flexShrink: 1,
     color: colors.gray[500],
     fontSize: typography.fontSize.sm,
   },
