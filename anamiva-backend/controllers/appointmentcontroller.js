@@ -384,9 +384,24 @@ exports.getAppointmentById = async (req, res) => {
 
     if (!appointment) return res.status(404).json({ success: false, message: 'Appointment not found' });
 
+    const prescription = await MedicalRecord.findOne({
+      appointmentId: appointment._id,
+      type: 'prescription',
+    }).sort({ createdAt: -1 });
+
+    const transformedAppointment = transformAppointment(appointment);
+    if (prescription) {
+      transformedAppointment.prescriptionId = prescription._id.toString();
+      transformedAppointment.prescription = {
+        id: prescription._id.toString(),
+        ...prescription.toObject(),
+        date: prescription.recordDate || prescription.createdAt,
+      };
+    }
+
     res.json({
       success: true,
-      appointment: transformAppointment(appointment)
+      appointment: transformedAppointment
     });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

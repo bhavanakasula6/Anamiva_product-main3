@@ -39,6 +39,23 @@ import {
 import { appointmentAPI, medicalRecordAPI } from '../../services/api';
 import socketService from '../../services/socketService';
 
+const getRecordId = (record) => record?._id || record?.id;
+
+const getAppointmentRecordId = (appointment) => appointment?._id || appointment?.id;
+
+const getRecordAppointmentId = (record) => {
+  const appointmentId = record?.appointmentId;
+  return appointmentId?._id || appointmentId?.id || appointmentId;
+};
+
+const normalizePrescriptionResponse = (response) =>
+  response?.prescription ||
+  response?.record ||
+  response?.medicalRecord ||
+  response?.data?.prescription ||
+  response?.data?.record ||
+  null;
+
 const AppointmentDetailsScreen = ({ route, navigation }) => {
   const { appointmentId = '', refresh } = route.params || {};
   const { width } = useWindowDimensions();
@@ -85,10 +102,59 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
     const res = await appointmentAPI.getAppointmentById(appointmentId);
     if (res.success) {
       setAppointment(res.appointment);
+      if (res.appointment?.prescription) {
+        setPrescription(res.appointment.prescription);
+      }
     } else {
       Alert.alert('Error', 'Appointment not found');
       navigation.goBack();
     }
+  };
+
+  const loadPrescription = async (appointmentValue = appointment) => {
+    const lookupAppointmentId = getAppointmentRecordId(appointmentValue) || appointmentId;
+    if (!lookupAppointmentId) return null;
+
+    const directResponse = await medicalRecordAPI.getPrescriptionByAppointment(lookupAppointmentId);
+    const directPrescription = normalizePrescriptionResponse(directResponse);
+
+    if (directPrescription) {
+      setPrescription(directPrescription);
+      setAppointment(prev => prev ? {
+        ...prev,
+        prescription: directPrescription,
+        prescriptionId: getRecordId(directPrescription) || prev.prescriptionId,
+      } : prev);
+      return directPrescription;
+    }
+
+    if (!directResponse?.success && appointmentValue?.prescription) {
+      setPrescription(appointmentValue.prescription);
+      return appointmentValue.prescription;
+    }
+
+    const patientId = appointmentValue?.patientId;
+    if (patientId) {
+      const recordsResponse = await medicalRecordAPI.getMedicalRecords(patientId);
+      const records = recordsResponse?.records || [];
+      const fallbackPrescription = records.find(record =>
+        record?.type === 'prescription' &&
+        String(getRecordAppointmentId(record)) === String(lookupAppointmentId)
+      );
+
+      if (fallbackPrescription) {
+        setPrescription(fallbackPrescription);
+        setAppointment(prev => prev ? {
+          ...prev,
+          prescription: fallbackPrescription,
+          prescriptionId: getRecordId(fallbackPrescription) || prev.prescriptionId,
+        } : prev);
+        return fallbackPrescription;
+      }
+    }
+
+    setPrescription(null);
+    return null;
   };
 
   useEffect(() => {
@@ -110,16 +176,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
 
     (async () => {
       setPrescription(null);
-      const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
-      if (res?.success) {
-        setPrescription(res.prescription);
-        if (res.prescription && !appointment.prescriptionId) {
-          setAppointment(prev => ({
-            ...prev,
-            prescriptionId: res.prescription.id,
-          }));
-        }
-      }
+      await loadPrescription(appointment);
     })();
   }, [appointment?.id, refresh]);
 
@@ -140,13 +197,7 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
 
     const refreshPrescriptionHandler = async (data) => {
       if (data?.appointmentId && String(data.appointmentId) !== String(appointment.id)) return;
-      const res = await medicalRecordAPI.getPrescriptionByAppointment(appointment.id);
-      if (res?.success) {
-        setPrescription(res.prescription);
-        if (res.prescription) {
-          setAppointment(prev => prev ? { ...prev, prescriptionId: res.prescription.id } : prev);
-        }
-      }
+      await loadPrescription(appointment);
     };
 
     const refreshAccessHandler = async (data) => {
@@ -393,8 +444,9 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
   if (loading || !appointment) {
     return <Loading fullScreen text="Loading appointment..." />;
   }
-  const canViewPrescription = !!prescription && (isDoctor || isPatient);
-  const prescriptionRecordId = prescription?._id || prescription?.id || appointment.prescriptionId;
+  const visiblePrescription = prescription || appointment?.prescription || null;
+  const canViewPrescription = !!visiblePrescription && (isDoctor || isPatient);
+  const prescriptionRecordId = getRecordId(visiblePrescription) || appointment.prescriptionId;
 
 
   return (
@@ -450,12 +502,18 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
 
           </Card>
 
-          {/* Prescription (Patients can only view after consultation is completed) */}
+          {/* Prescription */}
           {canViewPrescription && (
             <Card style={styles.card}>
               <Text style={styles.section}>Prescription</Text>
 
-              {prescription?.medications?.map((med, i) => (
+              {visiblePrescription?.diagnosis ? (
+                <Text style={styles.prescriptionDiagnosis}>
+                  Diagnosis: {visiblePrescription.diagnosis}
+                </Text>
+              ) : null}
+
+              {visiblePrescription?.medications?.length ? visiblePrescription.medications.map((med, i) => (
                 <View key={i} style={styles.prescriptionItem}>
                   <Text style={styles.medName}>{med.name}</Text>
                   <Text style={styles.medSub}>
@@ -465,7 +523,9 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                     Duration: {med.duration}
                   </Text>
                 </View>
-              ))}
+              )) : (
+                <Text style={styles.accessMuted}>Prescription details are available in the full record.</Text>
+              )}
 
               <Button
                 variant="outline"
@@ -473,10 +533,10 @@ const AppointmentDetailsScreen = ({ route, navigation }) => {
                 fullWidth
                 style={styles.prescriptionRecordButton}
                 onPress={() => navigation.navigate('RecordDetails', {
-                  recordId: prescription._id || prescription.id,
+                  recordId: prescriptionRecordId,
                   patientId: appointment.patientId,
                   mode: isPatient ? 'PATIENT' : 'DOCTOR',
-                  record: prescription,
+                  record: visiblePrescription,
                 })}
               >
                 Open Full Prescription
@@ -1014,6 +1074,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     padding: spacing.sm,
     borderRadius: 8,
+    marginBottom: spacing.sm,
+  },
+  prescriptionDiagnosis: {
+    fontSize: typography.fontSize.sm,
+    color: colors.gray[700],
     marginBottom: spacing.sm,
   },
   prescriptionRecordButton: {
